@@ -1,12 +1,11 @@
 mock_provider "azapi" {
   mock_resource "azapi_resource" {
     defaults = {
-      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test"
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/azureFirewalls/afw-test"
       output = {
         properties = {
-          clientId    = "22222222-2222-2222-2222-222222222222"
-          principalId = "33333333-3333-3333-3333-333333333333"
-          tenantId    = "44444444-4444-4444-4444-444444444444"
+          ipAddress        = "203.0.113.10"
+          ipConfigurations = [{ properties = { privateIPAddress = "10.0.0.4" } }]
         }
       }
     }
@@ -29,268 +28,338 @@ mock_provider "time" {}
 
 variables {
   location  = "norwayeast"
-  name      = "id-test"
+  name      = "afw-test"
   parent_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
+  virtual_network = {
+    subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+    public_ip = { name = "pip-afw-test" }
+  }
+  firewall_policy = { name = "afwp-test" }
 }
 
 run "defaults" {
   command = apply
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30"
-    error_message = "The identity should use the default resource type."
+    condition     = azapi_resource.this.type == "Microsoft.Network/azureFirewalls@2025-07-01" && azapi_resource.this.name == var.name && azapi_resource.this.parent_id == var.parent_id && azapi_resource.this.location == var.location
+    error_message = "The firewall should use the default resource type, name, parent_id and location."
   }
   assert {
-    condition     = azapi_resource.this.name == var.name && azapi_resource.this.parent_id == var.parent_id && azapi_resource.this.location == var.location
-    error_message = "The identity should be created with name, parent_id and location."
-  }
-  assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "None"
-    error_message = "isolationScope should be sent with Azure's default, so that changing it back reaches Azure."
-  }
-  assert {
-    condition     = azapi_resource.this.retry == null
-    error_message = "retry should be unset by default."
-  }
-  assert {
-    condition     = azapi_resource.this.timeouts == null
-    error_message = "timeouts should be unset by default."
-  }
-  assert {
-    condition     = length(coalesce(azapi_resource.this.tags, {})) == 0 # computed: the mock returns {}
-    error_message = "tags should be unset by default."
-  }
-  assert {
-    condition     = module.interfaces.lock_resource_id == null && length(module.interfaces.role_assignment_resource_ids) + length(module.federated_identity_credential) == 0
-    error_message = "No lock, role assignment or credential should be created by default."
-  }
-  assert {
-    condition     = output.resource_id == azapi_resource.this.id && output.name == var.name
-    error_message = "resource_id and name should come from the identity."
-  }
-  assert {
-    condition     = output.principal_id == "33333333-3333-3333-3333-333333333333" && output.client_id == "22222222-2222-2222-2222-222222222222" && output.tenant_id == "44444444-4444-4444-4444-444444444444"
-    error_message = "principal_id, client_id and tenant_id should come from the identity's exported properties."
-  }
-  assert {
-    condition     = length(output.federated_identity_credential_resource_ids) == 0
-    error_message = "No credential IDs should be output by default."
-  }
-}
-
-run "identity_options" {
-  command = apply
-
-  variables {
-    isolation_scope = "Regional"
-    tags            = { environment = "test" }
-  }
-
-  assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "Regional"
-    error_message = "isolation_scope should map to properties.isolationScope."
-  }
-  assert {
-    condition     = azapi_resource.this.tags == tomap({ environment = "test" })
-    error_message = "tags should be set on the identity."
-  }
-}
-
-run "federated_identity_credentials" {
-  command = apply
-
-  variables {
-    federated_identity_credentials = {
-      github-main = {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:ref:refs/heads/main"
+    condition = jsonencode(azapi_resource.this.body) == jsonencode({
+      properties = {
+        sku            = { name = "AZFW_VNet", tier = "Standard" }
+        firewallPolicy = { id = module.firewall_policy[0].resource_id }
+        ipConfigurations = [{
+          name = "ipconfig"
+          properties = {
+            subnet          = { id = var.virtual_network.subnet_id }
+            publicIPAddress = { id = module.public_ip["ipconfig"].resource_id }
+          }
+        }]
+        managementIpConfiguration = null
+        autoscaleConfiguration    = null
       }
-      github-pr = {
-        issuer    = "https://token.actions.githubusercontent.com"
-        subject   = "repo:example/example:pull_request"
-        audiences = ["api://custom"]
+    })
+    error_message = "A Standard VNet firewall should get the policy and one IP configuration with the subnet and the created public IP, and no zones."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.zones == null && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
+    error_message = "Zones and the SKU name should replace the firewall."
+  }
+  assert {
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
+    error_message = "The default retry should cover AnotherOperationInProgress, with no timeouts or tags."
+  }
+  assert {
+    condition     = keys(module.public_ip) == ["ipconfig"] && length(module.firewall_policy) == 1 && length(module.rule_collection_group) + length(module.ip_group) == 0
+    error_message = "One public IP and the policy should be created, and no rules or IP groups."
+  }
+  assert {
+    condition     = module.interfaces.lock_resource_id == null && length(module.interfaces.role_assignment_resource_ids) + length(module.interfaces.diagnostic_setting_resource_ids) == 0
+    error_message = "No lock, role assignment or diagnostic setting should be created by default."
+  }
+  assert {
+    condition     = output.resource_id == azapi_resource.this.id && output.name == var.name && output.private_ip_address == "10.0.0.4" && output.firewall_policy_resource_id == module.firewall_policy[0].resource_id
+    error_message = "resource_id, name, private_ip_address and firewall_policy_resource_id should come from the firewall and its policy."
+  }
+  assert {
+    condition     = output.public_ip_address_ids == { ipconfig = module.public_ip["ipconfig"].resource_id } && output.public_ip_addresses == { ipconfig = "203.0.113.10" }
+    error_message = "The public IP outputs should be keyed by IP configuration name."
+  }
+}
+
+run "basic_with_management_and_more_public_ips" {
+  command = apply
+
+  variables {
+    sku_tier = "Basic"
+    zones    = ["3", "1", "2"]
+    autoscale = {
+      min_capacity = 2
+      max_capacity = 4
+    }
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip = { resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing" }
+      additional_public_ips = {
+        egress-2 = { name = "pip-afw-test-2", public_ip_prefix_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPPrefixes/ippre-test" }
+      }
+      management = {
+        subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
+        public_ip = { name = "pip-afw-test-mgmt" }
       }
     }
   }
 
   assert {
-    condition     = toset(keys(module.federated_identity_credential)) == toset(["github-main", "github-pr"])
-    error_message = "One credential module should be created per map entry."
+    condition     = azapi_resource.this.body.properties.sku.tier == "Basic" && module.firewall_policy[0].name == "afwp-test"
+    error_message = "The tier should reach the firewall."
   }
   assert {
-    condition     = module.federated_identity_credential["github-main"].name == "github-main"
-    error_message = "The map key should be the credential name."
+    condition = jsonencode(azapi_resource.this.body.properties.ipConfigurations) == jsonencode([
+      {
+        name = "ipconfig"
+        properties = {
+          subnet          = { id = var.virtual_network.subnet_id }
+          publicIPAddress = { id = var.virtual_network.public_ip.resource_id }
+        }
+      },
+      {
+        name       = "egress-2"
+        properties = { publicIPAddress = { id = module.public_ip["egress-2"].resource_id } }
+      },
+    ])
+    error_message = "The first IP configuration should hold the subnet and the given public IP, and each further public IP its own configuration without a subnet."
   }
   assert {
-    condition     = keys(output.federated_identity_credential_resource_ids) == ["github-main", "github-pr"]
-    error_message = "Credential resource IDs should be output by credential name."
+    condition     = azapi_resource.this.body.properties.managementIpConfiguration.name == "management" && azapi_resource.this.body.properties.managementIpConfiguration.properties.subnet.id == var.virtual_network.management.subnet_id && azapi_resource.this.body.properties.managementIpConfiguration.properties.publicIPAddress.id == module.public_ip["management"].resource_id
+    error_message = "The management IP configuration should hold its subnet and its own created public IP."
+  }
+  assert {
+    condition     = jsonencode(azapi_resource.this.body.properties.autoscaleConfiguration) == jsonencode({ minCapacity = 2, maxCapacity = 4 })
+    error_message = "autoscale should map to the body."
+  }
+  assert {
+    condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"])
+    error_message = "Zones should be sent sorted and replace the firewall when they change."
+  }
+  assert {
+    condition     = toset(keys(module.public_ip)) == toset(["egress-2", "management"])
+    error_message = "Only the public IPs with a name should be created."
+  }
+  assert {
+    condition     = output.public_ip_address_ids.ipconfig == var.virtual_network.public_ip.resource_id && length(output.public_ip_address_ids) == 3 && !contains(keys(output.public_ip_addresses), "ipconfig")
+    error_message = "public_ip_address_ids should hold every public IP, and public_ip_addresses only the created ones."
   }
 }
 
-run "interfaces" {
+run "existing_policy_with_rules_and_ip_groups" {
   command = apply
 
   variables {
-    federated_identity_credentials = {
-      github-main = {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:ref:refs/heads/main"
+    firewall_policy    = null
+    firewall_policy_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/firewallPolicies/afwp-existing"
+    ip_groups = {
+      spokes = { name = "ipg-spokes", ip_addresses = ["10.1.0.0/16"] }
+    }
+    rule_collection_groups = {
+      platform = {
+        priority = 200
+        network_rule_collections = {
+          spokes-out = {
+            priority = 300
+            action   = "Allow"
+            rules = {
+              dns = {
+                protocols             = ["UDP"]
+                source_ip_groups      = ["spokes"]
+                destination_ip_groups = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/ipGroups/ipg-dns"]
+                destination_ports     = ["53"]
+              }
+            }
+          }
+        }
+        application_rule_collections = {
+          web = {
+            priority = 400
+            action   = "Allow"
+            rules = {
+              updates = { source_ip_groups = ["spokes"], protocols = [{ type = "Https", port = 443 }], destination_fqdn_tags = ["WindowsUpdate"] }
+            }
+          }
+        }
       }
     }
+  }
+
+  assert {
+    condition     = length(module.firewall_policy) == 0 && azapi_resource.this.body.properties.firewallPolicy.id == var.firewall_policy_id && output.firewall_policy_resource_id == var.firewall_policy_id
+    error_message = "An existing policy should be used as given, without creating one."
+  }
+  assert {
+    condition     = jsonencode(local.rule_collection_groups.platform.network_rule_collections["spokes-out"].rules.dns.source_ip_groups) == jsonencode([module.ip_group["spokes"].resource_id]) && jsonencode(local.rule_collection_groups.platform.network_rule_collections["spokes-out"].rules.dns.destination_ip_groups) == jsonencode(["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/ipGroups/ipg-dns"])
+    error_message = "An IP group key should become the created group's ID, and an ID should be passed on."
+  }
+  assert {
+    condition     = jsonencode(local.rule_collection_groups.platform.application_rule_collections.web.rules.updates.source_ip_groups) == jsonencode([module.ip_group["spokes"].resource_id])
+    error_message = "IP group keys should also resolve in application rules."
+  }
+  assert {
+    condition     = keys(output.rule_collection_group_resource_ids) == ["platform"] && keys(output.ip_group_resource_ids) == ["spokes"]
+    error_message = "The rule collection groups and IP groups should be output by key."
+  }
+}
+
+run "interfaces_and_overrides" {
+  command = apply
+
+  variables {
     lock = { kind = "CanNotDelete" }
     role_assignments = {
-      by_name = {
-        role_definition_id_or_name = "Reader"
-        principal_id               = "55555555-5555-5555-5555-555555555555"
-      }
-      tenant_level_id = {
-        role_definition_id_or_name       = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-        principal_id                     = "66666666-6666-6666-6666-666666666666"
-        skip_service_principal_aad_check = true
+      reader = { role_definition_id_or_name = "Reader", principal_id = "55555555-5555-5555-5555-555555555555" }
+    }
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/log-test"
+        logs                  = [{ category_group = "allLogs" }]
       }
     }
+    resource_types      = { network_azure_firewalls = "Microsoft.Network/azureFirewalls@2025-05-01" }
+    ignore_body_changes = { network_azure_firewalls = ["properties.autoscaleConfiguration"] }
+    retry               = { error_message_regex = ["Conflict"] }
+    timeouts            = { create = "60m" }
+    tags                = { environment = "test" }
   }
 
-  # Their behaviour is tested in az-tf-mlz-interfaces; a test sees only its outputs.
+  # The interface keys of resource_types and ignore_body_changes, retry and timeouts go to the submodules
+  # and az-tf-mlz-interfaces, whose tests check them; ignore_body_changes is write-only.
   assert {
-    condition     = module.interfaces.lock_resource_id != null && keys(module.interfaces.role_assignment_resource_ids) == ["by_name", "tenant_level_id"]
-    error_message = "The lock and role assignments should be created through az-tf-mlz-interfaces."
+    condition     = module.interfaces.lock_resource_id != null && keys(module.interfaces.role_assignment_resource_ids) == ["reader"] && keys(module.interfaces.diagnostic_setting_resource_ids) == ["workspace"]
+    error_message = "The lock, role assignments and diagnostic settings should be created through az-tf-mlz-interfaces."
+  }
+  assert {
+    condition     = azapi_resource.this.type == "Microsoft.Network/azureFirewalls@2025-05-01" && azapi_resource.this.tags == tomap({ environment = "test" })
+    error_message = "resource_types and tags should reach the firewall."
+  }
+  assert {
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["Conflict"]) && azapi_resource.this.retry.interval_seconds == 30 && azapi_resource.this.timeouts.create == "60m"
+    error_message = "One retry field should be overridable while the others keep their defaults, and timeouts should reach the firewall."
   }
 }
 
-run "azapi_settings_reach_every_resource" {
-  command = apply
+run "basic_without_management" {
+  command = plan
 
-  # ignore_body_changes is write-only, so a test cannot read it back, and avm_interface_ignore_body_changes
-  # only checks that the argument uses the variable, not which slot. Setting it here proves the slots are
-  # accepted; which resource reads which slot is left to review. The interface keys of resource_types and
-  # ignore_body_changes, retry and timeouts go to az-tf-mlz-interfaces, whose tests check them.
   variables {
-    lock = { kind = "CanNotDelete" }
-    role_assignments = {
-      reader = {
-        role_definition_id_or_name = "Reader"
-        principal_id               = "55555555-5555-5555-5555-555555555555"
+    sku_tier = "Basic"
+  }
+
+  expect_failures = [var.virtual_network]
+}
+
+run "both_policy_inputs" {
+  command = plan
+
+  variables {
+    firewall_policy_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/firewallPolicies/afwp-existing"
+  }
+
+  expect_failures = [var.firewall_policy_id]
+}
+
+run "no_policy" {
+  command = plan
+
+  variables {
+    firewall_policy = null
+  }
+
+  expect_failures = [var.firewall_policy_id]
+}
+
+run "public_ip_with_name_and_id" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip = {
+        name        = "pip-afw-test"
+        resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
       }
     }
-    resource_types = {
-      managedidentity_user_assigned_identities = "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview"
-      authorization_locks                      = "Microsoft.Authorization/locks@2016-09-01"
-      authorization_role_assignments           = "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
-    }
-    ignore_body_changes = {
-      managedidentity_user_assigned_identities = ["properties.isolationScope"]
-      authorization_locks                      = ["properties.notes"]
-      authorization_role_assignments           = ["properties.description"]
-    }
-    retry = {
-      error_message_regex = ["AnotherOperationInProgress"]
-    }
-    timeouts = {
-      create = "15m"
+  }
+
+  expect_failures = [var.virtual_network]
+}
+
+run "wrong_subnet" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-workload"
+      public_ip = { name = "pip-afw-test" }
     }
   }
 
-  assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview"
-    error_message = "The resource_types override should reach the identity."
+  expect_failures = [var.virtual_network]
+}
+
+run "no_public_ip_without_management" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+    }
   }
-  assert {
-    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts.create == "15m"
-    error_message = "retry and timeouts should reach the identity."
+
+  expect_failures = [var.virtual_network]
+}
+
+run "duplicate_ip_configuration_names" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip = { name = "pip-afw-test" }
+      additional_public_ips = {
+        ipconfig = { name = "pip-afw-test-2" }
+      }
+    }
   }
+
+  expect_failures = [var.virtual_network]
+}
+
+run "invalid_zone" {
+  command = plan
+
+  variables {
+    zones = ["4"]
+  }
+
+  expect_failures = [var.zones]
 }
 
 run "invalid_name" {
   command = plan
 
   variables {
-    name = "-bad"
+    name = "afw-${join("", [for i in range(60) : "x"])}"
   }
 
   expect_failures = [var.name]
 }
 
-run "invalid_parent_id" {
+run "invalid_autoscale" {
   command = plan
 
   variables {
-    parent_id = "/subscriptions/00000000-0000-0000-0000-000000000000"
+    autoscale = { min_capacity = 1 }
   }
 
-  expect_failures = [var.parent_id]
-}
-
-run "invalid_isolation_scope" {
-  command = plan
-
-  variables {
-    isolation_scope = "Global"
-  }
-
-  expect_failures = [var.isolation_scope]
-}
-
-run "empty_isolation_scope" {
-  command = plan
-
-  variables {
-    isolation_scope = ""
-  }
-
-  expect_failures = [var.isolation_scope]
-}
-
-run "null_isolation_scope" {
-  command = plan
-
-  variables {
-    isolation_scope = null
-  }
-
-  assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "None"
-    error_message = "A null isolation_scope should fall back to the default."
-  }
-}
-
-run "invalid_lock_kind" {
-  command = plan
-
-  variables {
-    lock = { kind = "Delete" }
-  }
-
-  expect_failures = [var.lock]
-}
-
-run "too_many_credentials" {
-  command = plan
-
-  variables {
-    federated_identity_credentials = {
-      for i in range(21) : "credential-${i}" => {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:environment:env-${i}"
-      }
-    }
-  }
-
-  expect_failures = [var.federated_identity_credentials]
-}
-
-run "invalid_delegated_identity" {
-  command = plan
-
-  variables {
-    role_assignments = {
-      reader = {
-        role_definition_id_or_name             = "Reader"
-        principal_id                           = "55555555-5555-5555-5555-555555555555"
-        delegated_managed_identity_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
-      }
-    }
-  }
-
-  expect_failures = [var.role_assignments]
+  expect_failures = [var.autoscale]
 }

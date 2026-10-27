@@ -1,9 +1,14 @@
-output "principal_id" {
-  description = "Object ID of the identity's service principal."
-  value       = module.user_assigned_identity.principal_id
+output "private_ip_address" {
+  description = "Private IP address of the firewall, the next hop for the spokes' routes."
+  value       = module.azure_firewall.private_ip_address
+}
+
+output "public_ip_addresses" {
+  description = "The firewall's public IP addresses, by IP configuration name."
+  value       = module.azure_firewall.public_ip_addresses
 }
 
 output "resource_id" {
-  description = "Resource ID of the user-assigned identity."
-  value       = module.user_assigned_identity.resource_id
+  description = "Resource ID of the firewall."
+  value       = module.azure_firewall.resource_id
 }

@@ -64,82 +64,289 @@ The following input variables are required:
 
 ### <a name="input_location"></a> [location](#input\_location)
 
-Description: Azure region of the user-assigned identity, for example `norwayeast`.
+Description: Azure region of the firewall, and of the policy, public IP addresses and IP groups the module creates.
 
 Type: `string`
 
 ### <a name="input_name"></a> [name](#input\_name)
 
-Description: Name of the user-assigned identity.
+Description: Name of the firewall. Changing it replaces the firewall.
 
 Type: `string`
 
 ### <a name="input_parent_id"></a> [parent\_id](#input\_parent\_id)
 
-Description: Resource ID of the resource group the user-assigned identity is created in.
+Description: Resource ID of the resource group that holds the firewall and what the module creates for it.
 
 Type: `string`
 
-## Optional Inputs
+### <a name="input_virtual_network"></a> [virtual\_network](#input\_virtual\_network)
 
-The following input variables are optional (have default values):
+Description: The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (`name`, optionally from a prefix with `public_ip_prefix_id`) or an existing one (`resource_id`).
 
-### <a name="input_federated_identity_credentials"></a> [federated\_identity\_credentials](#input\_federated\_identity\_credentials)
-
-Description: Federated identity credentials on the user-assigned identity, keyed by credential name (3 to 120 characters:  
-letters, digits, hyphens and underscores, starting with a letter or digit). Azure allows 20 per identity.
-
-- `issuer` - URL of the external identity provider, for example `https://token.actions.githubusercontent.com`.
-- `subject` - Identifier of the external workload, for example `repo:<owner>/<repo>:environment:<name>`.
-- `audiences` - (Optional) Audiences accepted in the external token. Defaults to `["api://AzureADTokenExchange"]`.
-
-Type:
-
-```hcl
-map(object({
-    issuer    = string
-    subject   = string
-    audiences = optional(list(string), ["api://AzureADTokenExchange"])
-  }))
-```
-
-Default: `{}`
-
-### <a name="input_ignore_body_changes"></a> [ignore\_body\_changes](#input\_ignore\_body\_changes)
-
-Description: Paths in each resource's `body` whose changes the AzAPI provider ignores. Prefer Terraform's `lifecycle.ignore_changes` when the paths are static; use this variable when the paths must be derived from variables or other non-static values.
-
-Paths use dot notation, for example `properties.isolationScope`. Individual list items cannot be targeted; ignore the whole list property instead. Configuration changes at an ignored path are **not** sent to Azure until that path is removed from the list. Changes take effect only after an apply, because the value is held in provider-private state.
-
-- `managedidentity_user_assigned_identities` - Ignored body paths for the user-assigned identity.
-- `authorization_locks` - Ignored body paths for the lock.
-- `authorization_role_assignments` - Ignored body paths for the role assignments.
-- `managedidentity_user_assigned_identities_federated_identity_credentials` - Slot for the `federated_identity_credential` submodule.
-  - `managedidentity_user_assigned_identities_federated_identity_credentials` - Ignored body paths for each federated identity credential.
+- `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
+- `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
+- `public_ip` - (Optional) The first IP configuration's public IP address. Null only with `management` (forced tunnelling without a data-path public IP).
+- `additional_public_ips` - (Optional) Further public IP addresses, each its own IP configuration named by its key.
+- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`) and its own `public_ip`.
 
 Type:
 
 ```hcl
 object({
-    managedidentity_user_assigned_identities = optional(list(string), [])
-    authorization_locks                      = optional(list(string), [])
-    authorization_role_assignments           = optional(list(string), [])
+    subnet_id             = string
+    ip_configuration_name = optional(string, "ipconfig")
+    public_ip = optional(object({
+      name                = optional(string)
+      resource_id         = optional(string)
+      public_ip_prefix_id = optional(string)
+    }))
+    additional_public_ips = optional(map(object({
+      name                = optional(string)
+      resource_id         = optional(string)
+      public_ip_prefix_id = optional(string)
+    })), {})
+    management = optional(object({
+      subnet_id             = string
+      ip_configuration_name = optional(string, "management")
+      public_ip = object({
+        name                = optional(string)
+        resource_id         = optional(string)
+        public_ip_prefix_id = optional(string)
+      })
+    }))
+  })
+```
 
-    managedidentity_user_assigned_identities_federated_identity_credentials = optional(object({
-      managedidentity_user_assigned_identities_federated_identity_credentials = optional(list(string), [])
+## Optional Inputs
+
+The following input variables are optional (have default values):
+
+### <a name="input_autoscale"></a> [autoscale](#input\_autoscale)
+
+Description: (Optional) Capacity units the firewall scales between, each 2 or more; Azure's defaults when null.
+
+Type:
+
+```hcl
+object({
+    min_capacity = optional(number)
+    max_capacity = optional(number)
+  })
+```
+
+Default: `null`
+
+### <a name="input_diagnostic_settings"></a> [diagnostic\_settings](#input\_diagnostic\_settings)
+
+Description: A map of diagnostic settings to create on the resource. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
+
+- `name` - (Optional) The name of the diagnostic setting. One will be generated if not set, however this will not be unique if you want to create multiple diagnostic setting resources.
+- `logs` - (Optional) A set of log entries to send to the destination. Each entry has the following attributes:
+  - `category` - (Optional) The name of a specific log category to enable. Mutually exclusive with `category_group`.
+  - `category_group` - (Optional) The name of a log category group to enable (for example, `allLogs` or `audit`). Mutually exclusive with `category`.
+  - `enabled` - (Optional) Whether the log entry is enabled. Defaults to `true`.
+  - `retention_policy` - (Optional) The retention policy for the log entry.
+    - `days` - (Optional) The retention period in days. Defaults to `0` (retain indefinitely).
+    - `enabled` - (Optional) Whether the retention policy is enabled. Defaults to `false`.
+- `metrics` - (Optional) A set of metric entries to send to the destination. Each entry has the following attributes:
+  - `category` - (Optional) The name of the metric category to enable.
+  - `enabled` - (Optional) Whether the metric entry is enabled. Defaults to `true`.
+  - `retention_policy` - (Optional) The retention policy for the metric entry, with the same `days` and `enabled` attributes as `logs.retention_policy`.
+- `log_analytics_destination_type` - (Optional) The destination type for the diagnostic setting. Possible values are `Dedicated` and `AzureDiagnostics`. Defaults to `Dedicated`.
+- `workspace_resource_id` - (Optional) The resource ID of the log analytics workspace to send logs and metrics to.
+- `storage_account_resource_id` - (Optional) The resource ID of the storage account to send logs and metrics to.
+- `event_hub_authorization_rule_resource_id` - (Optional) The resource ID of the event hub authorization rule to send logs and metrics to.
+- `event_hub_name` - (Optional) The name of the event hub. If none is specified, the default event hub will be selected.
+- `marketplace_partner_resource_id` - (Optional) The full ARM resource ID of the Marketplace resource to which you would like to send Diagnostic Logs.
+
+Type:
+
+```hcl
+map(object({
+    name = optional(string, null)
+    logs = optional(set(object({
+      category       = optional(string, null)
+      category_group = optional(string, null)
+      enabled        = optional(bool, true)
+      retention_policy = optional(object({
+        days    = optional(number, 0)
+        enabled = optional(bool, false)
+      }), {})
+    })), [])
+    metrics = optional(set(object({
+      category = optional(string, null)
+      enabled  = optional(bool, true)
+      retention_policy = optional(object({
+        days    = optional(number, 0)
+        enabled = optional(bool, false)
+      }), {})
+    })), [])
+    log_analytics_destination_type           = optional(string, "Dedicated")
+    workspace_resource_id                    = optional(string, null)
+    storage_account_resource_id              = optional(string, null)
+    event_hub_authorization_rule_resource_id = optional(string, null)
+    event_hub_name                           = optional(string, null)
+    marketplace_partner_resource_id          = optional(string, null)
+  }))
+```
+
+Default: `{}`
+
+### <a name="input_firewall_policy"></a> [firewall\_policy](#input\_firewall\_policy)
+
+Description: (Optional) The firewall policy the module creates, with the firewall's tier, region and tags; exactly one of `firewall_policy` and `firewall_policy_id`. The settings are those of `modules/firewall_policy`, whose README describes each: `name` (required), `base_policy_id`, `threat_intelligence_mode`, `threat_intelligence_allowlist`, `dns`, `snat`, `sql_redirect_allowed`, `explicit_proxy`, `insights`, `intrusion_detection` (Premium), `tls_certificate` (Premium), `managed_identities`, `lock` and `role_assignments`. IP group keys from `ip_groups` work in `intrusion_detection.traffic_bypass` as in rules.
+
+Type:
+
+```hcl
+object({
+    name                          = string
+    base_policy_id                = optional(string)
+    threat_intelligence_mode      = optional(string, "Alert")
+    threat_intelligence_allowlist = optional(object({ ip_addresses = optional(list(string), []), fqdns = optional(list(string), []) }), {})
+    dns = optional(object({
+      proxy_enabled                   = optional(bool, false)
+      servers                         = optional(list(string), [])
+      require_proxy_for_network_rules = optional(bool)
+    }), {})
+    snat = optional(object({
+      private_ranges                    = optional(list(string))
+      auto_learn_private_ranges_enabled = optional(bool, false)
+    }), {})
+    sql_redirect_allowed = optional(bool, false)
+    explicit_proxy = optional(object({
+      enabled          = optional(bool, true)
+      http_port        = optional(number)
+      https_port       = optional(number)
+      pac_file_enabled = optional(bool, false)
+      pac_file_port    = optional(number)
+      pac_file         = optional(string)
+    }))
+    insights = optional(object({
+      enabled                            = optional(bool, true)
+      retention_in_days                  = optional(number)
+      default_log_analytics_workspace_id = string
+      log_analytics_workspaces           = optional(map(string), {})
+    }))
+    intrusion_detection = optional(object({
+      mode                = string
+      signature_overrides = optional(map(string), {})
+      traffic_bypass = optional(map(object({
+        description           = optional(string)
+        protocol              = string
+        source_addresses      = optional(list(string), [])
+        source_ip_groups      = optional(list(string), [])
+        destination_addresses = optional(list(string), [])
+        destination_ip_groups = optional(list(string), [])
+        destination_ports     = optional(list(string), [])
+      })), {})
+      private_ranges = optional(list(string), [])
+    }))
+    tls_certificate = optional(object({
+      key_vault_secret_id = string
+      name                = string
+    }))
+    managed_identities = optional(object({
+      system_assigned            = optional(bool, false)
+      user_assigned_resource_ids = optional(set(string), [])
+    }), {})
+    lock = optional(object({
+      kind  = string
+      name  = optional(string, null)
+      notes = optional(string, null)
+    }))
+    role_assignments = optional(map(object({
+      name                                   = optional(string, null)
+      role_definition_id_or_name             = string
+      principal_id                           = string
+      description                            = optional(string, null)
+      skip_service_principal_aad_check       = optional(bool, false)
+      condition                              = optional(string, null)
+      condition_version                      = optional(string, null)
+      delegated_managed_identity_resource_id = optional(string, null)
+      principal_type                         = optional(string, null)
+    })), {})
+  })
+```
+
+Default: `null`
+
+### <a name="input_firewall_policy_id"></a> [firewall\_policy\_id](#input\_firewall\_policy\_id)
+
+Description: (Optional) Resource ID of an existing firewall policy for the firewall; exactly one of `firewall_policy` and `firewall_policy_id`. The module's `rule_collection_groups` are created on it.
+
+Type: `string`
+
+Default: `null`
+
+### <a name="input_ignore_body_changes"></a> [ignore\_body\_changes](#input\_ignore\_body\_changes)
+
+Description: Paths in each resource's `body` whose changes the AzAPI provider ignores. Prefer Terraform's `lifecycle.ignore_changes` when the paths are static; use this variable when the paths must be derived from variables or other non-static values.
+
+Paths use dot notation, for example `properties.autoscaleConfiguration`. Individual list items cannot be targeted; ignore the whole list property instead. Configuration changes at an ignored path are **not** sent to Azure until that path is removed from the list. Changes take effect only after an apply, because the value is held in provider-private state.
+
+- `network_azure_firewalls` - Ignored body paths for the firewall.
+- `authorization_locks` - Ignored body paths for the firewall's lock.
+- `authorization_role_assignments` - Ignored body paths for the firewall's role assignments.
+- `insights_diagnostic_settings` - Ignored body paths for the firewall's diagnostic settings.
+- `network_firewall_policies` - Slot for `modules/firewall_policy` (its `network_firewall_policies`, `authorization_locks`, `authorization_role_assignments`).
+- `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`.
+- `network_ip_groups` - Slot for `modules/ip_group` (its `network_ip_groups`, `authorization_locks`, `authorization_role_assignments`).
+- `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls (its `network_public_ip_addresses` and interface keys).
+
+Type:
+
+```hcl
+object({
+    network_azure_firewalls        = optional(list(string), [])
+    authorization_locks            = optional(list(string), [])
+    authorization_role_assignments = optional(list(string), [])
+    insights_diagnostic_settings   = optional(list(string), [])
+
+    network_firewall_policies = optional(object({
+      network_firewall_policies      = optional(list(string), [])
+      authorization_locks            = optional(list(string), [])
+      authorization_role_assignments = optional(list(string), [])
+    }), {})
+    network_firewall_policies_rule_collection_groups = optional(object({
+      network_firewall_policies_rule_collection_groups = optional(list(string), [])
+    }), {})
+    network_ip_groups = optional(object({
+      network_ip_groups              = optional(list(string), [])
+      authorization_locks            = optional(list(string), [])
+      authorization_role_assignments = optional(list(string), [])
+    }), {})
+    network_public_ip_addresses = optional(object({
+      network_public_ip_addresses    = optional(list(string), [])
+      authorization_locks            = optional(list(string), [])
+      authorization_role_assignments = optional(list(string), [])
+      insights_diagnostic_settings   = optional(list(string), [])
     }), {})
   })
 ```
 
 Default: `{}`
 
-### <a name="input_isolation_scope"></a> [isolation\_scope](#input\_isolation\_scope)
+### <a name="input_ip_groups"></a> [ip\_groups](#input\_ip\_groups)
 
-Description: Regional restriction on assigning the identity: `None` (Azure's default) or `Regional`.
+Description: IP groups the module creates in `parent_id`, by key. Rules and IDPS bypass entries take these keys wherever they take IP group IDs (`source_ip_groups`, `destination_ip_groups`); anything that is not a key is passed on as an ID.
 
-Type: `string`
+- `name` - Name of the IP group.
+- `ip_addresses` - IP addresses, CIDR prefixes and ranges.
+- `location` - (Optional) Region of the IP group; the firewall's when null.
 
-Default: `"None"`
+Type:
+
+```hcl
+map(object({
+    name         = string
+    ip_addresses = list(string)
+    location     = optional(string)
+  }))
+```
+
+Default: `{}`
 
 ### <a name="input_lock"></a> [lock](#input\_lock)
 
@@ -163,24 +370,44 @@ Default: `null`
 
 ### <a name="input_resource_types"></a> [resource\_types](#input\_resource\_types)
 
-Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings used by this module and its submodule. Each key defaults to a tested value; supply only the keys you want to override.
+Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings used by this module and its submodules. Each key defaults to a tested value; supply only the keys you want to override.
 
-- `managedidentity_user_assigned_identities` - The user-assigned identity.
-- `authorization_locks` - The lock on the user-assigned identity.
-- `authorization_role_assignments` - Role assignments on the user-assigned identity.
-- `managedidentity_user_assigned_identities_federated_identity_credentials` - Slot for the `federated_identity_credential` submodule. Defaults live in the submodule.
-  - `managedidentity_user_assigned_identities_federated_identity_credentials` - Each federated identity credential.
+- `network_azure_firewalls` - The firewall.
+- `authorization_locks` - The lock on the firewall.
+- `authorization_role_assignments` - Role assignments on the firewall.
+- `insights_diagnostic_settings` - Diagnostic settings on the firewall.
+- `network_firewall_policies` - Slot for `modules/firewall_policy`. Defaults live in the submodule.
+- `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`. Defaults live in the submodule.
+- `network_ip_groups` - Slot for `modules/ip_group`. Defaults live in the submodule.
+- `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls. Defaults live in that module.
 
 Type:
 
 ```hcl
 object({
-    managedidentity_user_assigned_identities = optional(string, "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30")
-    authorization_locks                      = optional(string, "Microsoft.Authorization/locks@2020-05-01")
-    authorization_role_assignments           = optional(string, "Microsoft.Authorization/roleAssignments@2022-04-01")
+    network_azure_firewalls        = optional(string, "Microsoft.Network/azureFirewalls@2025-07-01")
+    authorization_locks            = optional(string, "Microsoft.Authorization/locks@2020-05-01")
+    authorization_role_assignments = optional(string, "Microsoft.Authorization/roleAssignments@2022-04-01")
+    insights_diagnostic_settings   = optional(string, "Microsoft.Insights/diagnosticSettings@2021-05-01-preview")
 
-    managedidentity_user_assigned_identities_federated_identity_credentials = optional(object({
-      managedidentity_user_assigned_identities_federated_identity_credentials = optional(string)
+    network_firewall_policies = optional(object({
+      network_firewall_policies      = optional(string)
+      authorization_locks            = optional(string)
+      authorization_role_assignments = optional(string)
+    }), {})
+    network_firewall_policies_rule_collection_groups = optional(object({
+      network_firewall_policies_rule_collection_groups = optional(string)
+    }), {})
+    network_ip_groups = optional(object({
+      network_ip_groups              = optional(string)
+      authorization_locks            = optional(string)
+      authorization_role_assignments = optional(string)
+    }), {})
+    network_public_ip_addresses = optional(object({
+      network_public_ip_addresses    = optional(string)
+      authorization_locks            = optional(string)
+      authorization_role_assignments = optional(string)
+      insights_diagnostic_settings   = optional(string)
     }), {})
   })
 ```
@@ -189,11 +416,11 @@ Default: `{}`
 
 ### <a name="input_retry"></a> [retry](#input\_retry)
 
-Description: Retry configuration applied to every `azapi` resource managed by the module (root resource and all submodules). Defaults to `null` (no custom retry).
+Description: Retry configuration applied to every `azapi` resource managed by the module and its submodules. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the firewall or policy runs; any field can be overridden.
 
-- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry.
-- `interval_seconds`     - (Optional) Initial interval between retries in seconds.
-- `max_interval_seconds` - (Optional) Maximum interval between retries in seconds.
+- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress"]`.
+- `interval_seconds`     - (Optional) Initial interval between retries in seconds. Defaults to `30`.
+- `max_interval_seconds` - (Optional) Maximum interval between retries in seconds. Defaults to `300`.
 
 See <https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource#retry> for full semantics.
 
@@ -201,17 +428,17 @@ Type:
 
 ```hcl
 object({
-    error_message_regex  = optional(list(string))
-    interval_seconds     = optional(number)
-    max_interval_seconds = optional(number)
+    error_message_regex  = optional(list(string), ["AnotherOperationInProgress"])
+    interval_seconds     = optional(number, 30)
+    max_interval_seconds = optional(number, 300)
   })
 ```
 
-Default: `null`
+Default: `{}`
 
 ### <a name="input_role_assignments"></a> [role\_assignments](#input\_role\_assignments)
 
-Description: A map of role assignments to create on the user-assigned identity. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
+Description: A map of role assignments to create on the firewall. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
 
 - `name` - (Optional) The name of the role assignment. If not set, a random UUID will be generated. Changing this forces the creation of a new resource.
 - `role_definition_id_or_name` - The ID or name of the role definition to assign to the principal.
@@ -243,6 +470,73 @@ map(object({
 
 Default: `{}`
 
+### <a name="input_rule_collection_groups"></a> [rule\_collection\_groups](#input\_rule\_collection\_groups)
+
+Description: Rule collection groups on the policy, by group name: `priority` (100 to 65000) and `application_rule_collections`, `network_rule_collections` and `nat_rule_collections`, as described in `modules/rule_collection_group`. Keys of `ip_groups` work wherever an IP group ID is taken.
+
+Type:
+
+```hcl
+map(object({
+    priority = number
+    application_rule_collections = optional(map(object({
+      priority = number
+      action   = string
+      rules = map(object({
+        description           = optional(string)
+        source_addresses      = optional(list(string), [])
+        source_ip_groups      = optional(list(string), [])
+        protocols             = optional(list(object({ type = string, port = number })), [])
+        destination_fqdns     = optional(list(string), [])
+        destination_fqdn_tags = optional(list(string), [])
+        destination_urls      = optional(list(string), [])
+        destination_addresses = optional(list(string), [])
+        web_categories        = optional(list(string), [])
+        terminate_tls         = optional(bool, false)
+        http_headers          = optional(map(string), {})
+      }))
+    })), {})
+    network_rule_collections = optional(map(object({
+      priority = number
+      action   = string
+      rules = map(object({
+        description           = optional(string)
+        protocols             = list(string)
+        source_addresses      = optional(list(string), [])
+        source_ip_groups      = optional(list(string), [])
+        destination_addresses = optional(list(string), [])
+        destination_ip_groups = optional(list(string), [])
+        destination_fqdns     = optional(list(string), [])
+        destination_ports     = list(string)
+      }))
+    })), {})
+    nat_rule_collections = optional(map(object({
+      priority = number
+      rules = map(object({
+        description         = optional(string)
+        protocols           = list(string)
+        source_addresses    = optional(list(string), [])
+        source_ip_groups    = optional(list(string), [])
+        destination_address = string
+        destination_ports   = list(string)
+        translated_address  = optional(string)
+        translated_fqdn     = optional(string)
+        translated_port     = number
+      }))
+    })), {})
+  }))
+```
+
+Default: `{}`
+
+### <a name="input_sku_tier"></a> [sku\_tier](#input\_sku\_tier)
+
+Description: Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`.
+
+Type: `string`
+
+Default: `"Standard"`
+
 ### <a name="input_tags"></a> [tags](#input\_tags)
 
 Description: (Optional) Tags of the resource.
@@ -253,7 +547,7 @@ Default: `null`
 
 ### <a name="input_timeouts"></a> [timeouts](#input\_timeouts)
 
-Description: Default per-operation timeouts applied to every `azapi` resource managed by the module. Defaults to `null` (provider defaults). Each value is a Go duration string (e.g. `30m`, `1h`).
+Description: Default per-operation timeouts applied to every `azapi` resource managed by the module and its submodules. Defaults to `null` (provider defaults). Each value is a Go duration string (e.g. `30m`, `1h`).
 
 - `create` - (Optional) Timeout for create operations.
 - `read`   - (Optional) Timeout for read operations.
@@ -273,41 +567,57 @@ object({
 
 Default: `null`
 
+### <a name="input_zones"></a> [zones](#input\_zones)
+
+Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out: a firewall without zones, and zone-redundant public IP addresses where the region has zones. Microsoft advises against zones for new Basic firewalls. Changing them replaces the firewall.
+
+Type: `list(string)`
+
+Default: `null`
+
 ## Outputs
 
 The following outputs are exported:
 
-### <a name="output_client_id"></a> [client\_id](#output\_client\_id)
+### <a name="output_firewall_policy_resource_id"></a> [firewall\_policy\_resource\_id](#output\_firewall\_policy\_resource\_id)
 
-Description: Client (application) ID of the user-assigned identity.
+Description: Resource ID of the firewall's policy, created by the module or given.
 
-### <a name="output_federated_identity_credential_resource_ids"></a> [federated\_identity\_credential\_resource\_ids](#output\_federated\_identity\_credential\_resource\_ids)
+### <a name="output_ip_group_resource_ids"></a> [ip\_group\_resource\_ids](#output\_ip\_group\_resource\_ids)
 
-Description: Resource IDs of the federated identity credentials, by credential name.
+Description: Resource IDs of the IP groups the module creates, by key.
 
 ### <a name="output_name"></a> [name](#output\_name)
 
-Description: Name of the user-assigned identity.
+Description: Name of the firewall.
 
-### <a name="output_principal_id"></a> [principal\_id](#output\_principal\_id)
+### <a name="output_private_ip_address"></a> [private\_ip\_address](#output\_private\_ip\_address)
 
-Description: Object (principal) ID of the user-assigned identity's service principal.
+Description: Private IP address of the firewall in `AzureFirewallSubnet`, the next hop for routes to it.
+
+### <a name="output_public_ip_address_ids"></a> [public\_ip\_address\_ids](#output\_public\_ip\_address\_ids)
+
+Description: Resource IDs of the firewall's public IP addresses, created or given, by IP configuration name (the management one included).
+
+### <a name="output_public_ip_addresses"></a> [public\_ip\_addresses](#output\_public\_ip\_addresses)
+
+Description: IP addresses of the public IP addresses the module creates, by IP configuration name.
 
 ### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
 
-Description: Resource ID of the user-assigned identity.
+Description: Resource ID of the firewall.
 
-### <a name="output_tenant_id"></a> [tenant\_id](#output\_tenant\_id)
+### <a name="output_rule_collection_group_resource_ids"></a> [rule\_collection\_group\_resource\_ids](#output\_rule\_collection\_group\_resource\_ids)
 
-Description: Tenant ID of the user-assigned identity.
+Description: Resource IDs of the rule collection groups, by name.
 
 ## Modules
 
 The following Modules are called:
 
-### <a name="module_federated_identity_credential"></a> [federated\_identity\_credential](#module\_federated\_identity\_credential)
+### <a name="module_firewall_policy"></a> [firewall\_policy](#module\_firewall\_policy)
 
-Source: ./modules/federated_identity_credential
+Source: ./modules/firewall_policy
 
 Version:
 
@@ -316,6 +626,24 @@ Version:
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
 Version: v0.1.0
+
+### <a name="module_ip_group"></a> [ip\_group](#module\_ip\_group)
+
+Source: ./modules/ip_group
+
+Version:
+
+### <a name="module_public_ip"></a> [public\_ip](#module\_public\_ip)
+
+Source: git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git
+
+Version: v0.1.1
+
+### <a name="module_rule_collection_group"></a> [rule\_collection\_group](#module\_rule\_collection\_group)
+
+Source: ./modules/rule_collection_group
+
+Version:
 
 ## Development
 

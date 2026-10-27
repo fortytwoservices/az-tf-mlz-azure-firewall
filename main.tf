@@ -1,18 +1,54 @@
 resource "azapi_resource" "this" {
-  type      = var.resource_types.managedidentity_user_assigned_identities
+  type      = var.resource_types.network_azure_firewalls
   name      = var.name
   parent_id = var.parent_id
   location  = var.location
-  # Federated identity credentials are child resources; ARM keeps them when the identity is written
-  # without them. isolationScope is always sent: a property left out of the body is not compared by azapi
-  # (ignore_no_op_changes), so changing it back would never reach Azure.
-  body = {
-    properties = {
-      isolationScope = var.isolation_scope
-    }
+  body = merge(
+    {
+      # The classic rule collections (applicationRuleCollections and the like) are left out: rules live
+      # in the policy.
+      properties = {
+        sku            = { name = "AZFW_VNet", tier = var.sku_tier }
+        firewallPolicy = { id = local.firewall_policy_id }
+        # The first IP configuration holds the subnet; further public IP addresses get their own,
+        # without a subnet.
+        ipConfigurations = concat(
+          [{
+            name = var.virtual_network.ip_configuration_name
+            properties = {
+              subnet          = { id = var.virtual_network.subnet_id }
+              publicIPAddress = var.virtual_network.public_ip == null ? null : { id = local.public_ip_ids[var.virtual_network.ip_configuration_name] }
+            }
+          }],
+          [for name in keys(var.virtual_network.additional_public_ips) : {
+            name       = name
+            properties = { publicIPAddress = { id = local.public_ip_ids[name] } }
+          }],
+        )
+        managementIpConfiguration = var.virtual_network.management == null ? null : {
+          name = var.virtual_network.management.ip_configuration_name
+          properties = {
+            subnet          = { id = var.virtual_network.management.subnet_id }
+            publicIPAddress = { id = local.public_ip_ids[var.virtual_network.management.ip_configuration_name] }
+          }
+        }
+        autoscaleConfiguration = var.autoscale == null ? null : {
+          minCapacity = var.autoscale.min_capacity
+          maxCapacity = var.autoscale.max_capacity
+        }
+      }
+    },
+    # Left out when null, so Azure's choice is not compared; sorted, so their order changes nothing.
+    local.zones == null ? {} : { zones = local.zones },
+  )
+  ignore_body_changes = length(var.ignore_body_changes.network_azure_firewalls) > 0 ? var.ignore_body_changes.network_azure_firewalls : null
+  # Azure cannot change the zones of a firewall; compared as an input, so setting them back to null
+  # also replaces it.
+  replace_triggers_external_values = {
+    zones = local.zones
   }
-  ignore_body_changes    = length(var.ignore_body_changes.managedidentity_user_assigned_identities) > 0 ? var.ignore_body_changes.managedidentity_user_assigned_identities : null
-  response_export_values = ["properties.principalId", "properties.clientId", "properties.tenantId"]
+  replace_triggers_refs  = ["properties.sku.name"]
+  response_export_values = ["properties.ipConfigurations"]
   retry                  = var.retry
   tags                   = var.tags
 
@@ -25,4 +61,7 @@ resource "azapi_resource" "this" {
       delete = timeouts.value.delete
     }
   }
+
+  # The firewall is updated with the policy; writing the rules first keeps the two from overlapping.
+  depends_on = [module.rule_collection_group]
 }
