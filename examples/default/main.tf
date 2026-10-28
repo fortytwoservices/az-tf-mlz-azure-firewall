@@ -2,7 +2,9 @@
 provider "azapi" {}
 
 locals {
-  location = "norwayeast"
+  # A Standard firewall failed twice in norwayeast on 2026-10-28 (terminal state Failed,
+  # InternalServerError, after 18 minutes) while the same example succeeded here.
+  location = "swedencentral"
   tags     = { example = "default" }
 }
 
