@@ -84,4 +84,9 @@ resource "azapi_resource" "this" {
       delete = timeouts.value.delete
     }
   }
+
+  # Not create_before_destroy, unlike the policy and IP groups: Terraform deletes such a resource only after
+  # its dependents are updated, and the policy's lock is one (through lock_dependency), so the old group
+  # would be deleted under the lock again (ScopeLocked, integration test 2026-10-28). Replacing the groups
+  # (a renamed or another policy) therefore deletes the old ones before the firewall switches policy.
 }

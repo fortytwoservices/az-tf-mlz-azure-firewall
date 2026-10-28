@@ -94,10 +94,6 @@ run "basic_with_management_and_more_public_ips" {
   variables {
     sku_tier = "Basic"
     zones    = ["3", "1", "2"]
-    autoscale = {
-      min_capacity = 2
-      max_capacity = 4
-    }
     virtual_network = {
       subnet_id             = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
       public_ip_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
@@ -141,10 +137,6 @@ run "basic_with_management_and_more_public_ips" {
   assert {
     condition     = azapi_resource.this.body.properties.managementIpConfiguration.name == "management" && azapi_resource.this.body.properties.managementIpConfiguration.properties.subnet.id == var.virtual_network.management.subnet_id && azapi_resource.this.body.properties.managementIpConfiguration.properties.publicIPAddress.id == module.public_ip["management"].resource_id
     error_message = "The management IP configuration should hold its subnet and its own created public IP."
-  }
-  assert {
-    condition     = jsonencode(azapi_resource.this.body.properties.autoscaleConfiguration) == jsonencode({ minCapacity = 2, maxCapacity = 4 })
-    error_message = "autoscale should map to the body."
   }
   assert {
     condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.management
@@ -258,6 +250,10 @@ run "interfaces_and_overrides" {
         logs                  = [{ category_group = "allLogs" }]
       }
     }
+    autoscale = {
+      min_capacity = 2
+      max_capacity = 4
+    }
     resource_types      = { network_azure_firewalls = "Microsoft.Network/azureFirewalls@2025-05-01" }
     ignore_body_changes = { network_azure_firewalls = ["properties.autoscaleConfiguration"] }
     retry               = { error_message_regex = ["Conflict"] }
@@ -272,8 +268,8 @@ run "interfaces_and_overrides" {
     error_message = "The lock, role assignments and diagnostic settings should be created through az-tf-mlz-interfaces."
   }
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.Network/azureFirewalls@2025-05-01" && azapi_resource.this.tags == tomap({ environment = "test" })
-    error_message = "resource_types and tags should reach the firewall."
+    condition     = azapi_resource.this.type == "Microsoft.Network/azureFirewalls@2025-05-01" && azapi_resource.this.tags == tomap({ environment = "test" }) && jsonencode(azapi_resource.this.body.properties.autoscaleConfiguration) == jsonencode({ minCapacity = 2, maxCapacity = 4 })
+    error_message = "resource_types, tags and autoscale should reach the firewall."
   }
   assert {
     condition     = azapi_resource.this.retry.error_message_regex == tolist(["Conflict"]) && azapi_resource.this.retry.interval_seconds == 30 && azapi_resource.this.timeouts.create == "60m"
@@ -424,6 +420,35 @@ run "invalid_autoscale" {
 
   variables {
     autoscale = { min_capacity = 1 }
+  }
+
+  expect_failures = [var.autoscale]
+}
+
+run "autoscale_capacities_one_apart" {
+  command = plan
+
+  variables {
+    autoscale = { min_capacity = 5, max_capacity = 6 }
+  }
+
+  expect_failures = [var.autoscale]
+}
+
+run "autoscale_on_basic" {
+  command = plan
+
+  variables {
+    sku_tier  = "Basic"
+    autoscale = { min_capacity = 2, max_capacity = 4 }
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip = { name = "pip-afw-test" }
+      management = {
+        subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
+        public_ip = { name = "pip-afw-test-mgmt" }
+      }
+    }
   }
 
   expect_failures = [var.autoscale]

@@ -112,11 +112,19 @@ variable "autoscale" {
     max_capacity = optional(number)
   })
   default     = null
-  description = "(Optional) Capacity units the firewall scales between, each 2 or more; Azure's defaults when null."
+  description = "(Optional) Prescaling: the capacity units a Standard or Premium firewall scales between, each 2 to 50, equal (fixed capacity) or more than 1 apart; billed per capacity unit hour beyond the two default instances. Azure's autoscaling when null. Basic does not autoscale (Learn, \"Azure Firewall prescaling\" and \"Azure Firewall performance\")."
 
   validation {
-    condition     = var.autoscale == null ? true : alltrue([for capacity in [var.autoscale.min_capacity, var.autoscale.max_capacity] : capacity == null ? true : capacity >= 2])
-    error_message = "`autoscale` capacities must be 2 or more."
+    condition     = var.autoscale == null || var.sku_tier != "Basic"
+    error_message = "A Basic firewall does not autoscale: leave `autoscale` null."
+  }
+  validation {
+    condition     = var.autoscale == null ? true : alltrue([for capacity in [var.autoscale.min_capacity, var.autoscale.max_capacity] : capacity == null ? true : capacity >= 2 && capacity <= 50])
+    error_message = "`autoscale` capacities must be from 2 to 50."
+  }
+  validation {
+    condition     = var.autoscale == null ? true : var.autoscale.min_capacity == null || var.autoscale.max_capacity == null ? true : var.autoscale.min_capacity == var.autoscale.max_capacity || var.autoscale.max_capacity - var.autoscale.min_capacity > 1
+    error_message = "`autoscale.max_capacity` must equal `min_capacity` (fixed capacity) or exceed it by more than 1."
   }
 }
 
@@ -286,7 +294,7 @@ DESCRIPTION
 variable "sku_tier" {
   type        = string
   default     = "Standard"
-  description = "Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`. Standard and Premium change into each other in place; changing to or from Basic replaces the firewall (Azure supports no SKU change on a Basic firewall). A policy can't serve a firewall of a lower tier, so when the module creates the policy, give it a new name in the same change: the policy of the new tier is created first and the old one deleted last."
+  description = "Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`. Standard and Premium change into each other in place; changing to or from Basic replaces the firewall (Azure supports no SKU change on a Basic firewall). A policy can't serve a firewall of a lower tier, so when the module creates the policy, give it a new name in the same change: the policy of the new tier is created first and the old one deleted last. While that change applies, the old policy's rule collection groups are deleted before the firewall switches, so plan it for a maintenance window."
   nullable    = false
 
   validation {
