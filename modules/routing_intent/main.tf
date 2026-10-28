@@ -13,9 +13,10 @@ resource "azapi_resource" "this" {
   }
   ignore_body_changes = length(var.ignore_body_changes.network_virtual_hubs_routing_intent) > 0 ? var.ignore_body_changes.network_virtual_hubs_routing_intent : null
   # Azure refuses parallel writes to one hub's children (AnotherOperationInProgress).
-  locks                  = [var.parent_id]
-  response_export_values = []
-  retry                  = var.retry
+  locks                            = [var.parent_id]
+  replace_triggers_external_values = var.replace_triggers
+  response_export_values           = []
+  retry                            = var.retry
 
   dynamic "timeouts" {
     for_each = var.timeouts == null ? [] : [var.timeouts]

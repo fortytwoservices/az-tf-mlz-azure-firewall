@@ -267,6 +267,10 @@ run "virtual_hub_with_routing_intent" {
     error_message = "Moving to another hub, and switching between hub kinds (the SKU name), should replace the firewall."
   }
   assert {
+    condition     = jsonencode(azapi_resource.this.replace_triggers_external_values) == jsonencode(local.firewall_replace_triggers)
+    error_message = "The firewall's replacement triggers should be the local the routing intent also receives."
+  }
+  assert {
     condition     = length(module.public_ip) == 0 && length(module.routing_intent) == 1 && output.routing_intent_resource_id == module.routing_intent[0].resource_id
     error_message = "No public IP resources and one routing intent should be created."
   }
@@ -353,6 +357,34 @@ run "invalid_public_ip_count" {
     virtual_hub = {
       virtual_hub_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
       public_ip_count = 0
+    }
+  }
+
+  expect_failures = [var.virtual_hub]
+}
+
+run "more_than_80_hub_public_ips" {
+  command = plan
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+      public_ip_count = 81
+    }
+  }
+
+  expect_failures = [var.virtual_hub]
+}
+
+run "basic_in_virtual_hub" {
+  command = plan
+
+  variables {
+    sku_tier        = "Basic"
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
     }
   }
 

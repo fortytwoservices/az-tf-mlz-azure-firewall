@@ -57,16 +57,11 @@ resource "azapi_resource" "this" {
   # Firewall SKU": Basic supports no SKU change on an existing firewall). Compared as inputs, so going
   # back to null also replaces it. The keys stay those of v0.1.0, whose firewalls a new key would
   # replace: `subnet_id` holds the virtual hub's ID in a Virtual WAN hub.
-  replace_triggers_external_values = {
-    basic      = var.sku_tier == "Basic"
-    management = var.virtual_network == null ? false : var.virtual_network.management != null
-    subnet_id  = var.virtual_network == null ? lower(var.virtual_hub.virtual_hub_id) : lower(var.virtual_network.subnet_id)
-    zones      = local.zones
-  }
-  replace_triggers_refs  = ["properties.sku.name"]
-  response_export_values = ["properties.ipConfigurations", "properties.hubIPAddresses"]
-  retry                  = var.retry
-  tags                   = var.tags
+  replace_triggers_external_values = local.firewall_replace_triggers
+  replace_triggers_refs            = ["properties.sku.name"]
+  response_export_values           = ["properties.ipConfigurations", "properties.hubIPAddresses"]
+  retry                            = var.retry
+  tags                             = var.tags
 
   dynamic "timeouts" {
     for_each = var.timeouts == null ? [] : [var.timeouts]

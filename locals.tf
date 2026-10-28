@@ -38,4 +38,13 @@ locals {
     }) }
   } }
   zones = var.zones == null ? null : sort(distinct(var.zones))
+  # The firewall's replacement triggers (main.tf), also the routing intent's: a replaced firewall keeps its
+  # resource ID, so the routing intent must be replaced with it, deleted before the old firewall and
+  # created after the new one, rather than left pointing at a firewall being deleted.
+  firewall_replace_triggers = {
+    basic      = var.sku_tier == "Basic"
+    management = var.virtual_network == null ? false : var.virtual_network.management != null
+    subnet_id  = var.virtual_network != null ? lower(var.virtual_network.subnet_id) : var.virtual_hub == null ? null : lower(var.virtual_hub.virtual_hub_id)
+    zones      = local.zones
+  }
 }

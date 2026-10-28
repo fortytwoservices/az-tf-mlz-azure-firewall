@@ -4,7 +4,8 @@
 
 The routing intent of a Virtual WAN hub (`Microsoft.Network/virtualHubs/routingIntent`): which traffic the
 hub sends to a next hop, usually the hub's Azure Firewall. Each routing policy is keyed by its name and
-takes `Internet` and/or `PrivateTraffic` destinations. The root module creates it for a firewall in a
+takes one destination, `Internet` or `PrivateTraffic`: a hub has at most one policy of each kind.
+`replace_triggers` replaces the routing intent together with its next hop. The root module creates it for a firewall in a
 virtual hub (`virtual_hub.routing_intent`); it can also be called on its own with the hub's ID and a next
 hop.
 
@@ -45,9 +46,9 @@ Type: `string`
 
 ### <a name="input_routing_policies"></a> [routing\_policies](#input\_routing\_policies)
 
-Description: Routing policies, by policy name, for example `{ InternetTraffic = { destinations = ["Internet"], next_hop_id = <firewall ID> } }`:
+Description: Routing policies, by policy name, for example `{ InternetTraffic = { destinations = ["Internet"], next_hop_id = <firewall ID> } }`. A hub has at most one Internet and one private traffic policy (Microsoft Learn); Azure prescribes no names (Learn's examples use `PublicTraffic` and `PrivateTraffic`).
 
-- `destinations` - `Internet` and/or `PrivateTraffic`; each destination in one policy only.
+- `destinations` - One destination: `["Internet"]` or `["PrivateTraffic"]`, each in one policy only.
 - `next_hop_id` - Resource ID of the next hop, usually the hub's Azure Firewall.
 
 Type:
@@ -80,6 +81,14 @@ object({
 ```
 
 Default: `{}`
+
+### <a name="input_replace_triggers"></a> [replace\_triggers](#input\_replace\_triggers)
+
+Description: (Optional) Values whose change replaces the routing intent, for example the next hop's own replacement triggers: a replaced firewall keeps its resource ID, so without them the routing intent would still point at the firewall being deleted. The root module passes the firewall's.
+
+Type: `any`
+
+Default: `null`
 
 ### <a name="input_resource_types"></a> [resource\_types](#input\_resource\_types)
 

@@ -15,6 +15,12 @@ variable "parent_id" {
   }
 }
 
+variable "replace_triggers" {
+  type        = any
+  default     = null
+  description = "(Optional) Values whose change replaces the routing intent, for example the next hop's own replacement triggers: a replaced firewall keeps its resource ID, so without them the routing intent would still point at the firewall being deleted. The root module passes the firewall's."
+}
+
 variable "routing_policies" {
   type = map(object({
     destinations = list(string)
@@ -22,15 +28,15 @@ variable "routing_policies" {
   }))
   nullable    = false
   description = <<DESCRIPTION
-Routing policies, by policy name, for example `{ InternetTraffic = { destinations = ["Internet"], next_hop_id = <firewall ID> } }`:
+Routing policies, by policy name, for example `{ InternetTraffic = { destinations = ["Internet"], next_hop_id = <firewall ID> } }`. A hub has at most one Internet and one private traffic policy (Microsoft Learn); Azure prescribes no names (Learn's examples use `PublicTraffic` and `PrivateTraffic`).
 
-- `destinations` - `Internet` and/or `PrivateTraffic`; each destination in one policy only.
+- `destinations` - One destination: `["Internet"]` or `["PrivateTraffic"]`, each in one policy only.
 - `next_hop_id` - Resource ID of the next hop, usually the hub's Azure Firewall.
 DESCRIPTION
 
   validation {
-    condition     = length(var.routing_policies) > 0 && alltrue([for policy in values(var.routing_policies) : length(policy.destinations) > 0 && alltrue([for destination in policy.destinations : contains(["Internet", "PrivateTraffic"], destination)])])
-    error_message = "`routing_policies` needs at least one policy, each with `Internet` and/or `PrivateTraffic` destinations."
+    condition     = length(var.routing_policies) > 0 && alltrue([for policy in values(var.routing_policies) : length(policy.destinations) == 1 && alltrue([for destination in policy.destinations : contains(["Internet", "PrivateTraffic"], destination)])])
+    error_message = "`routing_policies` needs at least one policy, each with one destination: `Internet` or `PrivateTraffic`."
   }
   validation {
     condition     = length(flatten([for policy in values(var.routing_policies) : policy.destinations])) == length(distinct(flatten([for policy in values(var.routing_policies) : policy.destinations])))

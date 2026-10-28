@@ -37,6 +37,23 @@ run "defaults" {
     condition     = output.resource_id == azapi_resource.this.id && output.name == var.name
     error_message = "resource_id and name should come from the routing intent."
   }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values == null
+    error_message = "No replacement triggers should be set by default."
+  }
+}
+
+run "replace_triggers" {
+  command = apply
+
+  variables {
+    replace_triggers = { zones = ["1", "2", "3"], subnet_id = "vhub-test" }
+  }
+
+  assert {
+    condition     = jsonencode(azapi_resource.this.replace_triggers_external_values) == jsonencode(var.replace_triggers)
+    error_message = "replace_triggers should become the routing intent's replacement triggers."
+  }
 }
 
 run "overrides" {
@@ -61,6 +78,18 @@ run "unknown_destination" {
   variables {
     routing_policies = {
       Everything = { destinations = ["Internet", "Branches"], next_hop_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/azureFirewalls/afw-test" }
+    }
+  }
+
+  expect_failures = [var.routing_policies]
+}
+
+run "two_destinations_in_one_policy" {
+  command = plan
+
+  variables {
+    routing_policies = {
+      All = { destinations = ["Internet", "PrivateTraffic"], next_hop_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/azureFirewalls/afw-test" }
     }
   }
 
