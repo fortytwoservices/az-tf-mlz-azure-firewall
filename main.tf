@@ -17,10 +17,10 @@ resource "azapi_resource" "this" {
             name = var.virtual_network.ip_configuration_name
             properties = {
               subnet          = { id = var.virtual_network.subnet_id }
-              publicIPAddress = var.virtual_network.public_ip == null ? null : { id = local.public_ip_ids[var.virtual_network.ip_configuration_name] }
+              publicIPAddress = var.virtual_network.public_ip == null && var.virtual_network.public_ip_resource_id == null ? null : { id = local.public_ip_ids[var.virtual_network.ip_configuration_name] }
             }
           }],
-          [for name in keys(var.virtual_network.additional_public_ips) : {
+          [for name in sort(concat(keys(var.virtual_network.additional_public_ips), keys(var.virtual_network.additional_public_ip_resource_ids))) : {
             name       = name
             properties = { publicIPAddress = { id = local.public_ip_ids[name] } }
           }],
@@ -42,10 +42,12 @@ resource "azapi_resource" "this" {
     local.zones == null ? {} : { zones = local.zones },
   )
   ignore_body_changes = length(var.ignore_body_changes.network_azure_firewalls) > 0 ? var.ignore_body_changes.network_azure_firewalls : null
-  # Azure cannot change the zones of a firewall; compared as an input, so setting them back to null
-  # also replaces it.
+  # Azure cannot change the zones of a firewall, and enables or removes the management NIC only by
+  # stopping and starting it (Learn, "Azure Firewall Management NIC"). Compared as inputs, so going back
+  # to null also replaces it.
   replace_triggers_external_values = {
-    zones = local.zones
+    management = var.virtual_network.management != null
+    zones      = local.zones
   }
   replace_triggers_refs  = ["properties.sku.name"]
   response_export_values = ["properties.ipConfigurations"]

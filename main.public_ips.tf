@@ -1,6 +1,6 @@
 module "public_ip" {
   source   = "git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git?ref=v0.1.1"
-  for_each = { for name, public_ip in local.public_ips : name => public_ip if public_ip.name != null }
+  for_each = local.created_public_ips
 
   name                = each.value.name
   parent_id           = var.parent_id

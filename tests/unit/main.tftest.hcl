@@ -63,8 +63,8 @@ run "defaults" {
     error_message = "A Standard VNet firewall should get the policy and one IP configuration with the subnet and the created public IP, and no zones."
   }
   assert {
-    condition     = azapi_resource.this.replace_triggers_external_values.zones == null && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
-    error_message = "Zones and the SKU name should replace the firewall."
+    condition     = azapi_resource.this.replace_triggers_external_values.zones == null && azapi_resource.this.replace_triggers_external_values.management == false && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
+    error_message = "Zones, the management NIC and the SKU name should replace the firewall."
   }
   assert {
     condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
@@ -99,10 +99,13 @@ run "basic_with_management_and_more_public_ips" {
       max_capacity = 4
     }
     virtual_network = {
-      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
-      public_ip = { resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing" }
+      subnet_id             = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
       additional_public_ips = {
         egress-2 = { name = "pip-afw-test-2", public_ip_prefix_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPPrefixes/ippre-test" }
+      }
+      additional_public_ip_resource_ids = {
+        egress-3 = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing-3"
       }
       management = {
         subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
@@ -121,15 +124,19 @@ run "basic_with_management_and_more_public_ips" {
         name = "ipconfig"
         properties = {
           subnet          = { id = var.virtual_network.subnet_id }
-          publicIPAddress = { id = var.virtual_network.public_ip.resource_id }
+          publicIPAddress = { id = var.virtual_network.public_ip_resource_id }
         }
       },
       {
         name       = "egress-2"
         properties = { publicIPAddress = { id = module.public_ip["egress-2"].resource_id } }
       },
+      {
+        name       = "egress-3"
+        properties = { publicIPAddress = { id = var.virtual_network.additional_public_ip_resource_ids["egress-3"] } }
+      },
     ])
-    error_message = "The first IP configuration should hold the subnet and the given public IP, and each further public IP its own configuration without a subnet."
+    error_message = "The first IP configuration should hold the subnet and the given public IP, and each further public IP, created or given, its own configuration without a subnet."
   }
   assert {
     condition     = azapi_resource.this.body.properties.managementIpConfiguration.name == "management" && azapi_resource.this.body.properties.managementIpConfiguration.properties.subnet.id == var.virtual_network.management.subnet_id && azapi_resource.this.body.properties.managementIpConfiguration.properties.publicIPAddress.id == module.public_ip["management"].resource_id
@@ -140,15 +147,15 @@ run "basic_with_management_and_more_public_ips" {
     error_message = "autoscale should map to the body."
   }
   assert {
-    condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"])
-    error_message = "Zones should be sent sorted and replace the firewall when they change."
+    condition     = azapi_resource.this.body.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.zones == tolist(["1", "2", "3"]) && azapi_resource.this.replace_triggers_external_values.management
+    error_message = "Zones should be sent sorted and replace the firewall when they change, and the management NIC's presence should be a replacement trigger."
   }
   assert {
     condition     = toset(keys(module.public_ip)) == toset(["egress-2", "management"])
     error_message = "Only the public IPs with a name should be created."
   }
   assert {
-    condition     = output.public_ip_address_ids.ipconfig == var.virtual_network.public_ip.resource_id && length(output.public_ip_address_ids) == 3 && !contains(keys(output.public_ip_addresses), "ipconfig")
+    condition     = output.public_ip_address_ids.ipconfig == var.virtual_network.public_ip_resource_id && length(output.public_ip_address_ids) == 4 && !contains(keys(output.public_ip_addresses), "ipconfig")
     error_message = "public_ip_address_ids should hold every public IP, and public_ip_addresses only the created ones."
   }
 }
@@ -277,16 +284,14 @@ run "no_policy" {
   expect_failures = [var.firewall_policy_id]
 }
 
-run "public_ip_with_name_and_id" {
+run "created_and_existing_public_ip" {
   command = plan
 
   variables {
     virtual_network = {
-      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
-      public_ip = {
-        name        = "pip-afw-test"
-        resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
-      }
+      subnet_id             = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip             = { name = "pip-afw-test" }
+      public_ip_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
     }
   }
 
@@ -328,6 +333,39 @@ run "duplicate_ip_configuration_names" {
       additional_public_ips = {
         ipconfig = { name = "pip-afw-test-2" }
       }
+    }
+  }
+
+  expect_failures = [var.virtual_network]
+}
+
+run "management_with_two_public_ips" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip = { name = "pip-afw-test" }
+      management = {
+        subnet_id             = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
+        public_ip             = { name = "pip-afw-test-mgmt" }
+        public_ip_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing"
+      }
+    }
+  }
+
+  expect_failures = [var.virtual_network]
+}
+
+run "duplicate_additional_ip_configuration_keys" {
+  command = plan
+
+  variables {
+    virtual_network = {
+      subnet_id                         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      public_ip                         = { name = "pip-afw-test" }
+      additional_public_ips             = { egress-2 = { name = "pip-afw-test-2" } }
+      additional_public_ip_resource_ids = { egress-2 = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/publicIPAddresses/pip-existing" }
     }
   }
 

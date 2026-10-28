@@ -80,14 +80,14 @@ variable "explicit_proxy" {
 DESCRIPTION
 
   validation {
-    condition = var.explicit_proxy == null || (
-      (!var.explicit_proxy.enabled || (var.explicit_proxy.http_port != null && var.explicit_proxy.https_port != null)) &&
-      (!var.explicit_proxy.pac_file_enabled || (var.explicit_proxy.pac_file_port != null && var.explicit_proxy.pac_file != null))
+    condition = var.explicit_proxy == null ? true : (
+      (var.explicit_proxy.enabled ? var.explicit_proxy.http_port != null && var.explicit_proxy.https_port != null : true) &&
+      (var.explicit_proxy.pac_file_enabled ? var.explicit_proxy.pac_file_port != null && var.explicit_proxy.pac_file != null : true)
     )
     error_message = "An enabled explicit proxy needs `http_port` and `https_port`, and an enabled PAC file needs `pac_file_port` and `pac_file`."
   }
   validation {
-    condition     = var.explicit_proxy == null || alltrue([for port in compact([for p in [var.explicit_proxy.http_port, var.explicit_proxy.https_port, var.explicit_proxy.pac_file_port] : p == null ? "" : tostring(p)]) : tonumber(port) >= 0 && tonumber(port) <= 64000])
+    condition     = var.explicit_proxy == null ? true : alltrue([for port in [var.explicit_proxy.http_port, var.explicit_proxy.https_port, var.explicit_proxy.pac_file_port] : port == null ? true : port >= 0 && port <= 64000])
     error_message = "Explicit proxy ports must be from 0 to 64000."
   }
 }
@@ -110,7 +110,7 @@ variable "insights" {
 DESCRIPTION
 
   validation {
-    condition = var.insights == null || alltrue([
+    condition = var.insights == null ? true : alltrue([
       for id in concat([var.insights.default_log_analytics_workspace_id], values(var.insights.log_analytics_workspaces)) :
       can(provider::azapi::parse_resource_id("Microsoft.OperationalInsights/workspaces", id))
     ])
@@ -148,7 +148,7 @@ DESCRIPTION
     error_message = "Intrusion detection needs the Premium tier."
   }
   validation {
-    condition = var.intrusion_detection == null || (
+    condition = var.intrusion_detection == null ? true : (
       contains(["Alert", "Deny", "Off"], var.intrusion_detection.mode) &&
       alltrue([for mode in values(var.intrusion_detection.signature_overrides) : contains(["Alert", "Deny", "Off"], mode)]) &&
       alltrue([for bypass in values(var.intrusion_detection.traffic_bypass) : contains(["ANY", "ICMP", "TCP", "UDP"], bypass.protocol)])

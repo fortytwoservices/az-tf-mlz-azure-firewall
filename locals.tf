@@ -1,12 +1,19 @@
 locals {
   firewall_policy_id = var.firewall_policy_id != null ? var.firewall_policy_id : module.firewall_policy[0].resource_id
-  # Public IP addresses by the IP configuration that holds them.
-  public_ips = merge(
+  # The public IP addresses the module creates, by the IP configuration that holds them. Only the
+  # presence of an object decides membership, so a name unknown until apply cannot make the keys unknown.
+  created_public_ips = merge(
     var.virtual_network.public_ip == null ? {} : { (var.virtual_network.ip_configuration_name) = var.virtual_network.public_ip },
     var.virtual_network.additional_public_ips,
-    var.virtual_network.management == null ? {} : { (var.virtual_network.management.ip_configuration_name) = var.virtual_network.management.public_ip },
+    var.virtual_network.management == null ? {} : var.virtual_network.management.public_ip == null ? {} : { (var.virtual_network.management.ip_configuration_name) = var.virtual_network.management.public_ip },
   )
-  public_ip_ids = { for name, public_ip in local.public_ips : name => public_ip.name != null ? module.public_ip[name].resource_id : public_ip.resource_id }
+  # Every public IP address, created or existing, by IP configuration.
+  public_ip_ids = merge(
+    { for name, public_ip in module.public_ip : name => public_ip.resource_id },
+    var.virtual_network.public_ip_resource_id == null ? {} : { (var.virtual_network.ip_configuration_name) = var.virtual_network.public_ip_resource_id },
+    var.virtual_network.additional_public_ip_resource_ids,
+    var.virtual_network.management == null ? {} : var.virtual_network.management.public_ip_resource_id == null ? {} : { (var.virtual_network.management.ip_configuration_name) = var.virtual_network.management.public_ip_resource_id },
+  )
   # IP group keys in rules become the IDs of the groups this module creates; anything else is passed on as
   # an ID.
   rule_collection_groups = { for group_name, group in var.rule_collection_groups : group_name => {

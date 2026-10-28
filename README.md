@@ -65,7 +65,7 @@ The example deploys a Standard firewall with a policy, an IP group and rules.
 
 The following requirements are needed by this module:
 
-- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.11, < 2.0)
+- <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) (>= 1.16, < 2.0)
 
 - <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) (~> 2.12)
 
@@ -100,13 +100,13 @@ Type: `string`
 
 ### <a name="input_virtual_network"></a> [virtual\_network](#input\_virtual\_network)
 
-Description: The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (`name`, optionally from a prefix with `public_ip_prefix_id`) or an existing one (`resource_id`).
+Description: The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
 
 - `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
 - `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
-- `public_ip` - (Optional) The first IP configuration's public IP address. Null only with `management` (forced tunnelling without a data-path public IP).
-- `additional_public_ips` - (Optional) Further public IP addresses, each its own IP configuration named by its key.
-- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`) and its own `public_ip`.
+- `public_ip` or `public_ip_resource_id` - (Optional) The first IP configuration's public IP address, created or existing. Neither only with `management` (forced tunnelling without a data-path public IP).
+- `additional_public_ips` and `additional_public_ip_resource_ids` - (Optional) Further public IP addresses, created or existing, each its own IP configuration named by its key.
+- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`), and exactly one of `public_ip` and `public_ip_resource_id`. Adding or removing it replaces the firewall: Azure enables the management NIC on an existing firewall only by stopping and starting it.
 
 Type:
 
@@ -115,23 +115,23 @@ object({
     subnet_id             = string
     ip_configuration_name = optional(string, "ipconfig")
     public_ip = optional(object({
-      name                = optional(string)
-      resource_id         = optional(string)
+      name                = string
       public_ip_prefix_id = optional(string)
     }))
+    public_ip_resource_id = optional(string)
     additional_public_ips = optional(map(object({
-      name                = optional(string)
-      resource_id         = optional(string)
+      name                = string
       public_ip_prefix_id = optional(string)
     })), {})
+    additional_public_ip_resource_ids = optional(map(string), {})
     management = optional(object({
       subnet_id             = string
       ip_configuration_name = optional(string, "management")
-      public_ip = object({
-        name                = optional(string)
-        resource_id         = optional(string)
+      public_ip = optional(object({
+        name                = string
         public_ip_prefix_id = optional(string)
-      })
+      }))
+      public_ip_resource_id = optional(string)
     }))
   })
 ```
@@ -587,7 +587,7 @@ Default: `null`
 
 ### <a name="input_zones"></a> [zones](#input\_zones)
 
-Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out: a firewall without zones, and zone-redundant public IP addresses where the region has zones. Microsoft advises against zones for new Basic firewalls. Changing them replaces the firewall.
+Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall.
 
 Type: `list(string)`
 
@@ -665,7 +665,7 @@ Version:
 
 ## Development
 
-Tools: Terraform 1.15.7, TFLint 0.65.0, terraform-docs 0.24.0 (the versions CI uses).
+Tools: Terraform 1.17.0, TFLint 0.65.0, terraform-docs 0.24.0 (the versions CI uses).
 
 | What | Command |
 |---|---|

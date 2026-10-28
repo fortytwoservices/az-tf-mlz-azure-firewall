@@ -31,75 +31,74 @@ variable "virtual_network" {
     subnet_id             = string
     ip_configuration_name = optional(string, "ipconfig")
     public_ip = optional(object({
-      name                = optional(string)
-      resource_id         = optional(string)
+      name                = string
       public_ip_prefix_id = optional(string)
     }))
+    public_ip_resource_id = optional(string)
     additional_public_ips = optional(map(object({
-      name                = optional(string)
-      resource_id         = optional(string)
+      name                = string
       public_ip_prefix_id = optional(string)
     })), {})
+    additional_public_ip_resource_ids = optional(map(string), {})
     management = optional(object({
       subnet_id             = string
       ip_configuration_name = optional(string, "management")
-      public_ip = object({
-        name                = optional(string)
-        resource_id         = optional(string)
+      public_ip = optional(object({
+        name                = string
         public_ip_prefix_id = optional(string)
-      })
+      }))
+      public_ip_resource_id = optional(string)
     }))
   })
   nullable    = false
   description = <<DESCRIPTION
-The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (`name`, optionally from a prefix with `public_ip_prefix_id`) or an existing one (`resource_id`).
+The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
 
 - `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
 - `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
-- `public_ip` - (Optional) The first IP configuration's public IP address. Null only with `management` (forced tunnelling without a data-path public IP).
-- `additional_public_ips` - (Optional) Further public IP addresses, each its own IP configuration named by its key.
-- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`) and its own `public_ip`.
+- `public_ip` or `public_ip_resource_id` - (Optional) The first IP configuration's public IP address, created or existing. Neither only with `management` (forced tunnelling without a data-path public IP).
+- `additional_public_ips` and `additional_public_ip_resource_ids` - (Optional) Further public IP addresses, created or existing, each its own IP configuration named by its key.
+- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`), and exactly one of `public_ip` and `public_ip_resource_id`. Adding or removing it replaces the firewall: Azure enables the management NIC on an existing firewall only by stopping and starting it.
 DESCRIPTION
 
   validation {
-    condition = alltrue([
-      for public_ip in concat(
-        var.virtual_network.public_ip == null ? [] : [var.virtual_network.public_ip],
-        values(var.virtual_network.additional_public_ips),
-        var.virtual_network.management == null ? [] : [var.virtual_network.management.public_ip],
-      ) : (public_ip.name == null) != (public_ip.resource_id == null) && (public_ip.resource_id == null || public_ip.public_ip_prefix_id == null)
-    ])
-    error_message = "Each public IP address needs exactly one of `name` (created by the module) and `resource_id` (existing); `public_ip_prefix_id` only with `name`."
+    condition     = var.virtual_network.public_ip == null || var.virtual_network.public_ip_resource_id == null
+    error_message = "Set at most one of `virtual_network.public_ip` (created) and `virtual_network.public_ip_resource_id` (existing)."
+  }
+  validation {
+    condition     = var.virtual_network.public_ip != null || var.virtual_network.public_ip_resource_id != null || var.virtual_network.management != null
+    error_message = "The first IP configuration needs a public IP address unless `management` is set (forced tunnelling)."
+  }
+  validation {
+    condition     = var.virtual_network.management == null ? true : (var.virtual_network.management.public_ip == null) != (var.virtual_network.management.public_ip_resource_id == null)
+    error_message = "`virtual_network.management` needs exactly one of `public_ip` (created) and `public_ip_resource_id` (existing)."
   }
   validation {
     condition = alltrue([
-      for public_ip in concat(
-        var.virtual_network.public_ip == null ? [] : [var.virtual_network.public_ip],
-        values(var.virtual_network.additional_public_ips),
-        var.virtual_network.management == null ? [] : [var.virtual_network.management.public_ip],
-      ) : public_ip.resource_id == null || can(provider::azapi::parse_resource_id("Microsoft.Network/publicIPAddresses", public_ip.resource_id))
+      for id in concat(
+        [var.virtual_network.public_ip_resource_id],
+        values(var.virtual_network.additional_public_ip_resource_ids),
+        [var.virtual_network.management == null ? null : var.virtual_network.management.public_ip_resource_id],
+      ) : id == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/publicIPAddresses", id))
     ])
-    error_message = "Each public IP `resource_id` must be a public IP address resource ID."
+    error_message = "Each public IP resource ID must be a public IP address resource ID."
   }
   validation {
     condition     = can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.subnet_id)) && endswith(lower(var.virtual_network.subnet_id), "/subnets/azurefirewallsubnet")
     error_message = "`virtual_network.subnet_id` must be the resource ID of a subnet named `AzureFirewallSubnet`."
   }
   validation {
-    condition     = var.virtual_network.management == null || (can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.management.subnet_id)) && endswith(lower(var.virtual_network.management.subnet_id), "/subnets/azurefirewallmanagementsubnet"))
+    condition     = var.virtual_network.management == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.management.subnet_id)) && endswith(lower(var.virtual_network.management.subnet_id), "/subnets/azurefirewallmanagementsubnet")
     error_message = "`virtual_network.management.subnet_id` must be the resource ID of a subnet named `AzureFirewallManagementSubnet`."
-  }
-  validation {
-    condition     = var.virtual_network.public_ip != null || var.virtual_network.management != null
-    error_message = "`virtual_network.public_ip` can be null only with `management` (forced tunnelling)."
   }
   validation {
     condition = length(distinct(concat(
       [var.virtual_network.ip_configuration_name],
       keys(var.virtual_network.additional_public_ips),
+      keys(var.virtual_network.additional_public_ip_resource_ids),
       var.virtual_network.management == null ? [] : [var.virtual_network.management.ip_configuration_name],
-    ))) == 1 + length(var.virtual_network.additional_public_ips) + (var.virtual_network.management == null ? 0 : 1)
-    error_message = "IP configuration names (`ip_configuration_name`, the `additional_public_ips` keys and `management.ip_configuration_name`) must be unique."
+    ))) == 1 + length(var.virtual_network.additional_public_ips) + length(var.virtual_network.additional_public_ip_resource_ids) + (var.virtual_network.management == null ? 0 : 1)
+    error_message = "IP configuration names (`ip_configuration_name`, the keys of `additional_public_ips` and `additional_public_ip_resource_ids`, and `management.ip_configuration_name`) must be unique."
   }
   validation {
     condition     = var.sku_tier != "Basic" || var.virtual_network.management != null
@@ -116,7 +115,7 @@ variable "autoscale" {
   description = "(Optional) Capacity units the firewall scales between, each 2 or more; Azure's defaults when null."
 
   validation {
-    condition     = var.autoscale == null || alltrue([for capacity in compact([for c in [var.autoscale.min_capacity, var.autoscale.max_capacity] : c == null ? "" : tostring(c)]) : tonumber(capacity) >= 2])
+    condition     = var.autoscale == null ? true : alltrue([for capacity in [var.autoscale.min_capacity, var.autoscale.max_capacity] : capacity == null ? true : capacity >= 2])
     error_message = "`autoscale` capacities must be 2 or more."
   }
 }
@@ -299,10 +298,10 @@ variable "sku_tier" {
 variable "zones" {
   type        = list(string)
   default     = null
-  description = "(Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `[\"1\", \"2\", \"3\"]`. Null leaves them out: a firewall without zones, and zone-redundant public IP addresses where the region has zones. Microsoft advises against zones for new Basic firewalls. Changing them replaces the firewall."
+  description = "(Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `[\"1\", \"2\", \"3\"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall."
 
   validation {
-    condition     = var.zones == null || (length(var.zones) > 0 && alltrue([for zone in coalesce(var.zones, []) : contains(["1", "2", "3"], zone)]))
+    condition     = var.zones == null ? true : length(var.zones) > 0 && alltrue([for zone in var.zones : contains(["1", "2", "3"], zone)])
     error_message = "`zones` must be null or a non-empty list of `1`, `2` and `3`."
   }
 }

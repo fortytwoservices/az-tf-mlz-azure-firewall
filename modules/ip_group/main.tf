@@ -25,4 +25,11 @@ resource "azapi_resource" "this" {
       delete = timeouts.value.delete
     }
   }
+
+  lifecycle {
+    # A new name replaces the group. Azure deletes an IP group only once no rule uses it (Learn, "IP
+    # Groups in Azure Firewall policy"), so the new one is created first, the rules move to it, and the old
+    # one goes last.
+    create_before_destroy = true
+  }
 }

@@ -85,6 +85,10 @@ resource "azapi_resource" "this" {
   }
 
   lifecycle {
+    # A new name replaces the policy. Azure refuses to delete a policy a firewall still uses, so the new one
+    # is created first, the firewall moves to it, and the old one goes last.
+    create_before_destroy = true
+
     precondition {
       condition     = var.tls_certificate == null || length(var.managed_identities.user_assigned_resource_ids) > 0
       error_message = "TLS inspection reads its certificate from Key Vault with a user-assigned identity: set `managed_identities.user_assigned_resource_ids`."
