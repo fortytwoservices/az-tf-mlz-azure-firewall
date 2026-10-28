@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/compare/v0.1.0...v0.1.1) (2026-10-28)
+
+
+### Features
+
+* Azure Firewall in a Virtual WAN hub, with the hub's routing intent ([#4](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/issues/4)) ([ded4b20](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/commit/ded4b20bb9d7c060b51fbbcc71ba85144b543080))
+
 ## 0.1.0 (2026-10-28)
 
 
