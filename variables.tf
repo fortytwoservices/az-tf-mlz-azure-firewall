@@ -50,9 +50,9 @@ variable "virtual_network" {
       public_ip_resource_id = optional(string)
     }))
   })
-  nullable    = false
+  default     = null
   description = <<DESCRIPTION
-The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
+(Optional) The firewall in a virtual network hub (`AZFW_VNet`); exactly one of `virtual_network` and `virtual_hub`. The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
 
 - `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
 - `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
@@ -62,19 +62,19 @@ The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the c
 DESCRIPTION
 
   validation {
-    condition     = var.virtual_network.public_ip == null || var.virtual_network.public_ip_resource_id == null
+    condition     = var.virtual_network == null ? true : (var.virtual_network.public_ip == null || var.virtual_network.public_ip_resource_id == null)
     error_message = "Set at most one of `virtual_network.public_ip` (created) and `virtual_network.public_ip_resource_id` (existing)."
   }
   validation {
-    condition     = var.virtual_network.public_ip != null || var.virtual_network.public_ip_resource_id != null || var.virtual_network.management != null
+    condition     = var.virtual_network == null ? true : (var.virtual_network.public_ip != null || var.virtual_network.public_ip_resource_id != null || var.virtual_network.management != null)
     error_message = "The first IP configuration needs a public IP address unless `management` is set (forced tunnelling)."
   }
   validation {
-    condition     = var.virtual_network.management == null ? true : (var.virtual_network.management.public_ip == null) != (var.virtual_network.management.public_ip_resource_id == null)
+    condition     = var.virtual_network == null ? true : (var.virtual_network.management == null ? true : (var.virtual_network.management.public_ip == null) != (var.virtual_network.management.public_ip_resource_id == null))
     error_message = "`virtual_network.management` needs exactly one of `public_ip` (created) and `public_ip_resource_id` (existing)."
   }
   validation {
-    condition = alltrue([
+    condition = var.virtual_network == null ? true : alltrue([
       for id in concat(
         [var.virtual_network.public_ip_resource_id],
         values(var.virtual_network.additional_public_ip_resource_ids),
@@ -84,15 +84,15 @@ DESCRIPTION
     error_message = "Each public IP resource ID must be a public IP address resource ID."
   }
   validation {
-    condition     = can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.subnet_id)) && endswith(lower(var.virtual_network.subnet_id), "/subnets/azurefirewallsubnet")
+    condition     = var.virtual_network == null ? true : (can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.subnet_id)) && endswith(lower(var.virtual_network.subnet_id), "/subnets/azurefirewallsubnet"))
     error_message = "`virtual_network.subnet_id` must be the resource ID of a subnet named `AzureFirewallSubnet`."
   }
   validation {
-    condition     = var.virtual_network.management == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.management.subnet_id)) && endswith(lower(var.virtual_network.management.subnet_id), "/subnets/azurefirewallmanagementsubnet")
+    condition     = var.virtual_network == null ? true : (var.virtual_network.management == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/virtualNetworks/subnets", var.virtual_network.management.subnet_id)) && endswith(lower(var.virtual_network.management.subnet_id), "/subnets/azurefirewallmanagementsubnet"))
     error_message = "`virtual_network.management.subnet_id` must be the resource ID of a subnet named `AzureFirewallManagementSubnet`."
   }
   validation {
-    condition = length(distinct(concat(
+    condition = var.virtual_network == null ? true : length(distinct(concat(
       [var.virtual_network.ip_configuration_name],
       keys(var.virtual_network.additional_public_ips),
       keys(var.virtual_network.additional_public_ip_resource_ids),
@@ -101,8 +101,47 @@ DESCRIPTION
     error_message = "IP configuration names (`ip_configuration_name`, the keys of `additional_public_ips` and `additional_public_ip_resource_ids`, and `management.ip_configuration_name`) must be unique."
   }
   validation {
-    condition     = var.sku_tier != "Basic" || var.virtual_network.management != null
+    condition     = var.virtual_network == null ? true : (var.sku_tier != "Basic" || var.virtual_network.management != null)
     error_message = "A Basic firewall needs `virtual_network.management`."
+  }
+}
+
+variable "virtual_hub" {
+  type = object({
+    virtual_hub_id  = string
+    public_ip_count = optional(number, 1)
+    routing_intent = optional(object({
+      name             = optional(string, "RoutingIntent")
+      internet_traffic = optional(bool, true)
+      private_traffic  = optional(bool, true)
+    }))
+  })
+  default     = null
+  description = <<DESCRIPTION
+(Optional) The firewall in a Virtual WAN hub (`AZFW_Hub`, a secured hub); exactly one of `virtual_network` and `virtual_hub`. The hub belongs to the caller (the Virtual WAN composition creates it).
+
+- `virtual_hub_id` - Resource ID of the virtual hub. Changing it replaces the firewall.
+- `public_ip_count` - (Optional) How many public IP addresses Azure assigns to the firewall, 1 to 80 (Microsoft Learn: more can block updates to the firewall and its policy). Defaults to `1`.
+- `routing_intent` - (Optional) The hub's routing intent, through `modules/routing_intent`, with this firewall as the next hop: `internet_traffic` (policy `InternetTraffic`) and `private_traffic` (policy `PrivateTrafficPolicy`), both `true` by default, and `name` (defaults to `RoutingIntent`). It is replaced together with the firewall. A hub has one routing intent; leave this null when another state manages it.
+
+A firewall in a Virtual WAN hub is Standard or Premium (Microsoft Learn, "Secure your virtual hub using Azure PowerShell").
+DESCRIPTION
+
+  validation {
+    condition     = (var.virtual_hub == null) != (var.virtual_network == null)
+    error_message = "Set exactly one of `virtual_network` (a VNet hub) and `virtual_hub` (a Virtual WAN hub)."
+  }
+  validation {
+    condition     = var.virtual_hub == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/virtualHubs", var.virtual_hub.virtual_hub_id)) && var.virtual_hub.public_ip_count >= 1 && var.virtual_hub.public_ip_count <= 80 && floor(var.virtual_hub.public_ip_count) == var.virtual_hub.public_ip_count
+    error_message = "`virtual_hub.virtual_hub_id` must be a virtual hub resource ID, and `public_ip_count` a whole number from 1 to 80."
+  }
+  validation {
+    condition     = var.virtual_hub == null || var.sku_tier != "Basic"
+    error_message = "A firewall in a Virtual WAN hub is Standard or Premium, not Basic."
+  }
+  validation {
+    condition     = var.virtual_hub == null ? true : var.virtual_hub.routing_intent == null ? true : var.virtual_hub.routing_intent.internet_traffic || var.virtual_hub.routing_intent.private_traffic
+    error_message = "`virtual_hub.routing_intent` needs `internet_traffic` and/or `private_traffic`; leave it null for none."
   }
 }
 

@@ -6,7 +6,7 @@ groups and the IP groups the rules use. Each type besides the firewall is a subm
 called on its own, so a separate rules state can manage `modules/rule_collection_group` and
 `modules/ip_group` without planning the firewall.
 
-- **A firewall in a virtual network hub** (`AZFW_VNet`), Basic, Standard or Premium. The first IP
+- **A firewall in a virtual network hub** (`virtual_network`, `AZFW_VNet`), Basic, Standard or Premium. The first IP
   configuration holds the `AzureFirewallSubnet` and a public IP address; further public IP addresses get
   their own configurations. A management IP configuration in `AzureFirewallManagementSubnet` is required
   for Basic and for forced tunnelling. Public IP addresses are created through
@@ -25,7 +25,9 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   policy, as in Azure Verified Modules, through
   [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces). The policy's lock
   also covers its rule collection groups, which pass their `lock_dependency` to it.
-- Virtual WAN hubs (`AZFW_Hub`) and routing intent come in a later release.
+- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub): Azure assigns its public
+  IP addresses (`public_ip_count`), and `modules/routing_intent` sends the hub's Internet and/or private
+  traffic through it. The hub belongs to the caller; moving the firewall to another hub replaces it.
 
 ```hcl
 module "azure_firewall" {
@@ -56,4 +58,5 @@ module "azure_firewall" {
 }
 ```
 
-The example deploys a Standard firewall with a policy, an IP group and rules.
+The examples deploy a Standard firewall in a VNet hub with a policy, an IP group and rules (`default`), and
+one in a Virtual WAN hub with routing intent (`virtual_hub`).

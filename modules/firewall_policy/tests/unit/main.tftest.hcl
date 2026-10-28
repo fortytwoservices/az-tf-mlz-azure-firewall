@@ -162,8 +162,8 @@ run "premium_settings" {
   }
 }
 
-run "system_and_user_assigned_identity" {
-  command = apply
+run "system_assigned_identity" {
+  command = plan
 
   variables {
     managed_identities = {
@@ -172,10 +172,18 @@ run "system_and_user_assigned_identity" {
     }
   }
 
-  assert {
-    condition     = azapi_resource.this.identity[0].type == "SystemAssigned, UserAssigned"
-    error_message = "Both identity kinds should combine into one identity type."
+  expect_failures = [var.managed_identities]
+}
+
+run "deny_on_basic" {
+  command = plan
+
+  variables {
+    sku_tier                 = "Basic"
+    threat_intelligence_mode = "Deny"
   }
+
+  expect_failures = [var.threat_intelligence_mode]
 }
 
 run "overrides" {

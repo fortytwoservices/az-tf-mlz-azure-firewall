@@ -193,12 +193,16 @@ variable "managed_identities" {
   default     = {}
   nullable    = false
   description = <<DESCRIPTION
-Controls the Managed Identity configuration on this resource. TLS inspection reads its certificate from Key Vault with a user-assigned identity. The following properties can be specified:
+Controls the Managed Identity configuration on this resource. Firewall policies take user-assigned identities only; TLS inspection reads its certificate from Key Vault with one. The following properties can be specified:
 
 - `system_assigned` - (Optional) Specifies if the System Assigned Managed Identity should be enabled.
 - `user_assigned_resource_ids` - (Optional) Specifies a list of User Assigned Managed Identity resource IDs to be assigned to this resource.
 DESCRIPTION
 
+  validation {
+    condition     = !var.managed_identities.system_assigned
+    error_message = "Firewall policies take user-assigned identities only: Azure rejects a system-assigned one (`CannotSetResourceIdentity`). Leave `managed_identities.system_assigned` false."
+  }
   validation {
     condition = alltrue([
       for id in var.managed_identities.user_assigned_resource_ids :
@@ -305,12 +309,16 @@ variable "threat_intelligence_allowlist" {
 variable "threat_intelligence_mode" {
   type        = string
   default     = "Alert"
-  description = "Threat intelligence mode: `Alert`, `Deny` or `Off`. The Basic tier alerts only."
+  description = "Threat intelligence mode: `Alert`, `Deny` or `Off`. Basic doesn't support `Deny` (Learn, \"Azure Firewall and traffic inspection\": alert-only mode)."
   nullable    = false
 
   validation {
     condition     = contains(["Alert", "Deny", "Off"], var.threat_intelligence_mode)
     error_message = "`threat_intelligence_mode` must be `Alert`, `Deny` or `Off`."
+  }
+  validation {
+    condition     = !(var.sku_tier == "Basic" && var.threat_intelligence_mode == "Deny")
+    error_message = "The Basic tier has threat intelligence in alert mode only: `threat_intelligence_mode` can't be `Deny`."
   }
 }
 
