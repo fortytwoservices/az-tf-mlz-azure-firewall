@@ -1,5 +1,5 @@
 module "public_ip" {
-  source   = "git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git?ref=v0.1.1"
+  source   = "git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git?ref=v0.1.2"
   for_each = local.created_public_ips
 
   name                = each.value.name

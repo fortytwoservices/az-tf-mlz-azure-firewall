@@ -193,6 +193,45 @@ run "invalid_application_action" {
   expect_failures = [var.application_rule_collections]
 }
 
+run "mssql_application_rule" {
+  command = plan
+
+  variables {
+    application_rule_collections = {
+      app = {
+        priority = 300
+        action   = "Allow"
+        rules = {
+          sql = { protocols = [{ type = "Mssql", port = 1433 }], destination_fqdns = ["sqlserver-test.database.windows.net"] }
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.ruleCollections[0].rules[0].protocols[0].protocolType == "Mssql"
+    error_message = "An Mssql application rule (SQL FQDN filtering) should be accepted and sent."
+  }
+}
+
+run "invalid_application_protocol" {
+  command = plan
+
+  variables {
+    application_rule_collections = {
+      app = {
+        priority = 300
+        action   = "Allow"
+        rules = {
+          bad = { protocols = [{ type = "Ftp", port = 21 }], destination_fqdns = ["ftp.example.com"] }
+        }
+      }
+    }
+  }
+
+  expect_failures = [var.application_rule_collections]
+}
+
 run "invalid_network_protocol" {
   command = plan
 

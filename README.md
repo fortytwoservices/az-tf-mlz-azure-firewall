@@ -549,7 +549,7 @@ Default: `{}`
 
 ### <a name="input_sku_tier"></a> [sku\_tier](#input\_sku\_tier)
 
-Description: Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`.
+Description: Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`. Standard and Premium change into each other in place; changing to or from Basic replaces the firewall (Azure supports no SKU change on a Basic firewall). A policy can't serve a firewall of a lower tier, so when the module creates the policy, give it a new name in the same change: the policy of the new tier is created first and the old one deleted last.
 
 Type: `string`
 
@@ -643,7 +643,7 @@ Version:
 
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
-Version: v0.1.0
+Version: v0.1.1
 
 ### <a name="module_ip_group"></a> [ip\_group](#module\_ip\_group)
 
@@ -655,7 +655,7 @@ Version:
 
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git
 
-Version: v0.1.1
+Version: v0.1.2
 
 ### <a name="module_rule_collection_group"></a> [rule\_collection\_group](#module\_rule\_collection\_group)
 

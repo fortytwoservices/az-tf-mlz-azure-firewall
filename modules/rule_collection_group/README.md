@@ -65,7 +65,7 @@ Description: Application rule collections, by collection name. Each has:
   - `description` - (Optional) Description of the rule.
   - `source_addresses` - (Optional) Source IP addresses, CIDR prefixes or ranges.
   - `source_ip_groups` - (Optional) Source IP group resource IDs.
-  - `protocols` - (Optional) Protocols, each `{ type, port }`: `type` is `Http` or `Https`, `port` 0 to 64000.
+  - `protocols` - (Optional) Protocols, each `{ type, port }`: `type` is `Http`, `Https` or `Mssql` (SQL FQDN filtering, for example port 1433), `port` 0 to 64000.
   - `destination_fqdns` - (Optional) Destination FQDNs; `*` wildcards allowed.
   - `destination_fqdn_tags` - (Optional) FQDN tags, for example `WindowsUpdate`.
   - `destination_urls` - (Optional) Destination URLs (Premium).

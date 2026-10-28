@@ -428,6 +428,6 @@ The following Modules are called:
 
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
-Version: v0.1.0
+Version: v0.1.1
 
 <!-- END_TF_DOCS -->

@@ -42,11 +42,15 @@ resource "azapi_resource" "this" {
     local.zones == null ? {} : { zones = local.zones },
   )
   ignore_body_changes = length(var.ignore_body_changes.network_azure_firewalls) > 0 ? var.ignore_body_changes.network_azure_firewalls : null
-  # Azure cannot change the zones of a firewall, and enables or removes the management NIC only by
-  # stopping and starting it (Learn, "Azure Firewall Management NIC"). Compared as inputs, so going back
-  # to null also replaces it.
+  # Changes Azure makes only by stopping and starting the firewall, which the module does not do: its
+  # zones; the management NIC (Learn, "Azure Firewall Management NIC"); its virtual network (allocation
+  # binds the subnet); and a tier change to or from Basic (Learn, "Change Azure Firewall SKU": Basic
+  # supports no SKU change on an existing firewall). Compared as inputs, so going back to null also
+  # replaces it.
   replace_triggers_external_values = {
+    basic      = var.sku_tier == "Basic"
     management = var.virtual_network.management != null
+    subnet_id  = lower(var.virtual_network.subnet_id)
     zones      = local.zones
   }
   replace_triggers_refs  = ["properties.sku.name"]

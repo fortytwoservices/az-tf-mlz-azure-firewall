@@ -1,5 +1,7 @@
 locals {
-  firewall_policy_id = var.firewall_policy_id != null ? var.firewall_policy_id : module.firewall_policy[0].resource_id
+  # Chosen by the same test as the policy module's count, so an existing policy ID that is unknown until
+  # apply never makes Terraform index a policy module that does not exist.
+  firewall_policy_id = var.firewall_policy == null ? var.firewall_policy_id : module.firewall_policy[0].resource_id
   # The public IP addresses the module creates, by the IP configuration that holds them. Only the
   # presence of an object decides membership, so a name unknown until apply cannot make the keys unknown.
   created_public_ips = merge(

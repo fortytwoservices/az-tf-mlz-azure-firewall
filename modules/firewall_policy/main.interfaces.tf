@@ -1,5 +1,5 @@
 module "interfaces" {
-  source = "git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git?ref=v0.1.0"
+  source = "git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git?ref=v0.1.1"
 
   resource_id = azapi_resource.this.id
   location    = var.location

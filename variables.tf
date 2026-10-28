@@ -286,7 +286,7 @@ DESCRIPTION
 variable "sku_tier" {
   type        = string
   default     = "Standard"
-  description = "Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`."
+  description = "Tier of the firewall and of the policy the module creates: `Basic`, `Standard` or `Premium`. Standard and Premium change into each other in place; changing to or from Basic replaces the firewall (Azure supports no SKU change on a Basic firewall). A policy can't serve a firewall of a lower tier, so when the module creates the policy, give it a new name in the same change: the policy of the new tier is created first and the old one deleted last."
   nullable    = false
 
   validation {

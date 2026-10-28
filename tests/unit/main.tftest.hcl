@@ -63,8 +63,8 @@ run "defaults" {
     error_message = "A Standard VNet firewall should get the policy and one IP configuration with the subnet and the created public IP, and no zones."
   }
   assert {
-    condition     = azapi_resource.this.replace_triggers_external_values.zones == null && azapi_resource.this.replace_triggers_external_values.management == false && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
-    error_message = "Zones, the management NIC and the SKU name should replace the firewall."
+    condition     = azapi_resource.this.replace_triggers_external_values.zones == null && azapi_resource.this.replace_triggers_external_values.management == false && azapi_resource.this.replace_triggers_external_values.basic == false && azapi_resource.this.replace_triggers_external_values.subnet_id == lower(var.virtual_network.subnet_id) && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
+    error_message = "Zones, the management NIC, the virtual network, crossing the Basic tier and the SKU name should replace the firewall."
   }
   assert {
     condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
@@ -115,8 +115,8 @@ run "basic_with_management_and_more_public_ips" {
   }
 
   assert {
-    condition     = azapi_resource.this.body.properties.sku.tier == "Basic" && module.firewall_policy[0].name == "afwp-test"
-    error_message = "The tier should reach the firewall."
+    condition     = azapi_resource.this.body.properties.sku.tier == "Basic" && azapi_resource.this.replace_triggers_external_values.basic && module.firewall_policy[0].name == "afwp-test"
+    error_message = "The tier should reach the firewall, and Basic should be a replacement trigger."
   }
   assert {
     condition = jsonencode(azapi_resource.this.body.properties.ipConfigurations) == jsonencode([
