@@ -8,7 +8,7 @@ groups and the IP groups the rules use. Each type besides the firewall is a subm
 called on its own, so a separate rules state can manage `modules/rule_collection_group` and
 `modules/ip_group` without planning the firewall.
 
-- **A firewall in a virtual network hub** (`AZFW_VNet`), Basic, Standard or Premium. The first IP
+- **A firewall in a virtual network hub** (`virtual_network`, `AZFW_VNet`), Basic, Standard or Premium. The first IP
   configuration holds the `AzureFirewallSubnet` and a public IP address; further public IP addresses get
   their own configurations. A management IP configuration in `AzureFirewallManagementSubnet` is required
   for Basic and for forced tunnelling. Public IP addresses are created through
@@ -27,7 +27,9 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   policy, as in Azure Verified Modules, through
   [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces). The policy's lock
   also covers its rule collection groups, which pass their `lock_dependency` to it.
-- Virtual WAN hubs (`AZFW_Hub`) and routing intent come in a later release.
+- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub): Azure assigns its public
+  IP addresses (`public_ip_count`), and `modules/routing_intent` sends the hub's Internet and/or private
+  traffic through it. The hub belongs to the caller; moving the firewall to another hub replaces it.
 
 ```hcl
 module "azure_firewall" {
@@ -58,7 +60,8 @@ module "azure_firewall" {
 }
 ```
 
-The example deploys a Standard firewall with a policy, an IP group and rules.
+The examples deploy a Standard firewall in a VNet hub with a policy, an IP group and rules (`default`), and
+one in a Virtual WAN hub with routing intent (`virtual_hub`).
 
 <!-- markdownlint-disable MD033 -->
 ## Requirements
@@ -97,44 +100,6 @@ Type: `string`
 Description: Resource ID of the resource group that holds the firewall and what the module creates for it.
 
 Type: `string`
-
-### <a name="input_virtual_network"></a> [virtual\_network](#input\_virtual\_network)
-
-Description: The firewall in a virtual network hub (`AZFW_VNet`). The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
-
-- `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
-- `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
-- `public_ip` or `public_ip_resource_id` - (Optional) The first IP configuration's public IP address, created or existing. Neither only with `management` (forced tunnelling without a data-path public IP).
-- `additional_public_ips` and `additional_public_ip_resource_ids` - (Optional) Further public IP addresses, created or existing, each its own IP configuration named by its key.
-- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`), and exactly one of `public_ip` and `public_ip_resource_id`. Adding or removing it replaces the firewall: Azure enables the management NIC on an existing firewall only by stopping and starting it.
-
-Type:
-
-```hcl
-object({
-    subnet_id             = string
-    ip_configuration_name = optional(string, "ipconfig")
-    public_ip = optional(object({
-      name                = string
-      public_ip_prefix_id = optional(string)
-    }))
-    public_ip_resource_id = optional(string)
-    additional_public_ips = optional(map(object({
-      name                = string
-      public_ip_prefix_id = optional(string)
-    })), {})
-    additional_public_ip_resource_ids = optional(map(string), {})
-    management = optional(object({
-      subnet_id             = string
-      ip_configuration_name = optional(string, "management")
-      public_ip = optional(object({
-        name                = string
-        public_ip_prefix_id = optional(string)
-      }))
-      public_ip_resource_id = optional(string)
-    }))
-  })
-```
 
 ## Optional Inputs
 
@@ -311,6 +276,7 @@ Paths use dot notation, for example `properties.autoscaleConfiguration`. Individ
 - `network_firewall_policies` - Slot for `modules/firewall_policy` (its `network_firewall_policies`, `authorization_locks`, `authorization_role_assignments`).
 - `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`.
 - `network_ip_groups` - Slot for `modules/ip_group` (its `network_ip_groups`, `authorization_locks`, `authorization_role_assignments`).
+- `network_virtual_hubs_routing_intent` - Slot for `modules/routing_intent`.
 - `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls (its `network_public_ip_addresses` and interface keys).
 
 Type:
@@ -334,6 +300,9 @@ object({
       network_ip_groups              = optional(list(string), [])
       authorization_locks            = optional(list(string), [])
       authorization_role_assignments = optional(list(string), [])
+    }), {})
+    network_virtual_hubs_routing_intent = optional(object({
+      network_virtual_hubs_routing_intent = optional(list(string), [])
     }), {})
     network_public_ip_addresses = optional(object({
       network_public_ip_addresses    = optional(list(string), [])
@@ -397,6 +366,7 @@ Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings us
 - `network_firewall_policies` - Slot for `modules/firewall_policy`. Defaults live in the submodule.
 - `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`. Defaults live in the submodule.
 - `network_ip_groups` - Slot for `modules/ip_group`. Defaults live in the submodule.
+- `network_virtual_hubs_routing_intent` - Slot for `modules/routing_intent`. Defaults live in the submodule.
 - `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls. Defaults live in that module.
 
 Type:
@@ -420,6 +390,9 @@ object({
       network_ip_groups              = optional(string)
       authorization_locks            = optional(string)
       authorization_role_assignments = optional(string)
+    }), {})
+    network_virtual_hubs_routing_intent = optional(object({
+      network_virtual_hubs_routing_intent = optional(string)
     }), {})
     network_public_ip_addresses = optional(object({
       network_public_ip_addresses    = optional(string)
@@ -585,6 +558,70 @@ object({
 
 Default: `null`
 
+### <a name="input_virtual_hub"></a> [virtual\_hub](#input\_virtual\_hub)
+
+Description: (Optional) The firewall in a Virtual WAN hub (`AZFW_Hub`, a secured hub); exactly one of `virtual_network` and `virtual_hub`. The hub belongs to the caller (the Virtual WAN composition creates it).
+
+- `virtual_hub_id` - Resource ID of the virtual hub. Changing it replaces the firewall.
+- `public_ip_count` - (Optional) How many public IP addresses Azure assigns to the firewall, 1 to 100. Defaults to `1`.
+- `routing_intent` - (Optional) The hub's routing intent, through `modules/routing_intent`, with this firewall as the next hop: `internet_traffic` (policy `InternetTraffic`) and `private_traffic` (policy `PrivateTrafficPolicy`), both `true` by default, and `name` (defaults to `RoutingIntent`). A hub has one routing intent; leave this null when another state manages it.
+
+Type:
+
+```hcl
+object({
+    virtual_hub_id  = string
+    public_ip_count = optional(number, 1)
+    routing_intent = optional(object({
+      name             = optional(string, "RoutingIntent")
+      internet_traffic = optional(bool, true)
+      private_traffic  = optional(bool, true)
+    }))
+  })
+```
+
+Default: `null`
+
+### <a name="input_virtual_network"></a> [virtual\_network](#input\_virtual\_network)
+
+Description: (Optional) The firewall in a virtual network hub (`AZFW_VNet`); exactly one of `virtual_network` and `virtual_hub`. The subnets belong to the caller (the hub composition creates them). Each public IP address is either created by this module through `az-tf-mlz-public-ip` (a `public_ip` object: `name`, and optionally `public_ip_prefix_id` to take it from a prefix) or an existing one (a `public_ip_resource_id`). Which addresses are created depends only on which objects are set, so names and IDs may be unknown until apply.
+
+- `subnet_id` - Resource ID of the `AzureFirewallSubnet` (/26 or larger).
+- `ip_configuration_name` - (Optional) Name of the first IP configuration, which holds the subnet. Defaults to `ipconfig`.
+- `public_ip` or `public_ip_resource_id` - (Optional) The first IP configuration's public IP address, created or existing. Neither only with `management` (forced tunnelling without a data-path public IP).
+- `additional_public_ips` and `additional_public_ip_resource_ids` - (Optional) Further public IP addresses, created or existing, each its own IP configuration named by its key.
+- `management` - (Optional) The management IP configuration, required for Basic and for forced tunnelling: `subnet_id` of the `AzureFirewallManagementSubnet` (/26 or larger), `ip_configuration_name` (defaults to `management`), and exactly one of `public_ip` and `public_ip_resource_id`. Adding or removing it replaces the firewall: Azure enables the management NIC on an existing firewall only by stopping and starting it.
+
+Type:
+
+```hcl
+object({
+    subnet_id             = string
+    ip_configuration_name = optional(string, "ipconfig")
+    public_ip = optional(object({
+      name                = string
+      public_ip_prefix_id = optional(string)
+    }))
+    public_ip_resource_id = optional(string)
+    additional_public_ips = optional(map(object({
+      name                = string
+      public_ip_prefix_id = optional(string)
+    })), {})
+    additional_public_ip_resource_ids = optional(map(string), {})
+    management = optional(object({
+      subnet_id             = string
+      ip_configuration_name = optional(string, "management")
+      public_ip = optional(object({
+        name                = string
+        public_ip_prefix_id = optional(string)
+      }))
+      public_ip_resource_id = optional(string)
+    }))
+  })
+```
+
+Default: `null`
+
 ### <a name="input_zones"></a> [zones](#input\_zones)
 
 Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall.
@@ -601,6 +638,10 @@ The following outputs are exported:
 
 Description: Resource ID of the firewall's policy, created by the module or given.
 
+### <a name="output_hub_public_ip_addresses"></a> [hub\_public\_ip\_addresses](#output\_hub\_public\_ip\_addresses)
+
+Description: The public IP addresses Azure assigns to a firewall in a Virtual WAN hub; empty in a VNet hub.
+
 ### <a name="output_ip_group_resource_ids"></a> [ip\_group\_resource\_ids](#output\_ip\_group\_resource\_ids)
 
 Description: Resource IDs of the IP groups the module creates, by key.
@@ -611,11 +652,11 @@ Description: Name of the firewall.
 
 ### <a name="output_private_ip_address"></a> [private\_ip\_address](#output\_private\_ip\_address)
 
-Description: Private IP address of the firewall in `AzureFirewallSubnet`, the next hop for routes to it.
+Description: Private IP address of the firewall, the next hop for routes to it: in `AzureFirewallSubnet` for a VNet hub, in the hub's address space for a Virtual WAN hub.
 
 ### <a name="output_public_ip_address_ids"></a> [public\_ip\_address\_ids](#output\_public\_ip\_address\_ids)
 
-Description: Resource IDs of the firewall's public IP addresses, created or given, by IP configuration name (the management one included).
+Description: Resource IDs of the firewall's public IP addresses in a VNet hub, created or given, by IP configuration name (the management one included); empty in a Virtual WAN hub.
 
 ### <a name="output_public_ip_addresses"></a> [public\_ip\_addresses](#output\_public\_ip\_addresses)
 
@@ -624,6 +665,10 @@ Description: IP addresses of the public IP addresses the module creates, by IP c
 ### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
 
 Description: Resource ID of the firewall.
+
+### <a name="output_routing_intent_resource_id"></a> [routing\_intent\_resource\_id](#output\_routing\_intent\_resource\_id)
+
+Description: Resource ID of the hub's routing intent, when the module manages it; otherwise null.
 
 ### <a name="output_rule_collection_group_resource_ids"></a> [rule\_collection\_group\_resource\_ids](#output\_rule\_collection\_group\_resource\_ids)
 
@@ -656,6 +701,12 @@ Version:
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-public-ip.git
 
 Version: v0.1.2
+
+### <a name="module_routing_intent"></a> [routing\_intent](#module\_routing\_intent)
+
+Source: ./modules/routing_intent
+
+Version:
 
 ### <a name="module_rule_collection_group"></a> [rule\_collection\_group](#module\_rule\_collection\_group)
 

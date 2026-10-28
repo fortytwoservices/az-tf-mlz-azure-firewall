@@ -4,13 +4,14 @@ locals {
   firewall_policy_id = var.firewall_policy == null ? var.firewall_policy_id : module.firewall_policy[0].resource_id
   # The public IP addresses the module creates, by the IP configuration that holds them. Only the
   # presence of an object decides membership, so a name unknown until apply cannot make the keys unknown.
-  created_public_ips = merge(
+  # A firewall in a Virtual WAN hub has Azure-managed public IP addresses only.
+  created_public_ips = var.virtual_network == null ? {} : merge(
     var.virtual_network.public_ip == null ? {} : { (var.virtual_network.ip_configuration_name) = var.virtual_network.public_ip },
     var.virtual_network.additional_public_ips,
     var.virtual_network.management == null ? {} : var.virtual_network.management.public_ip == null ? {} : { (var.virtual_network.management.ip_configuration_name) = var.virtual_network.management.public_ip },
   )
   # Every public IP address, created or existing, by IP configuration.
-  public_ip_ids = merge(
+  public_ip_ids = var.virtual_network == null ? {} : merge(
     { for name, public_ip in module.public_ip : name => public_ip.resource_id },
     var.virtual_network.public_ip_resource_id == null ? {} : { (var.virtual_network.ip_configuration_name) = var.virtual_network.public_ip_resource_id },
     var.virtual_network.additional_public_ip_resource_ids,

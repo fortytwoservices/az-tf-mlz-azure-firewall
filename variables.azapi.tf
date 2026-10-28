@@ -18,6 +18,9 @@ variable "ignore_body_changes" {
       authorization_locks            = optional(list(string), [])
       authorization_role_assignments = optional(list(string), [])
     }), {})
+    network_virtual_hubs_routing_intent = optional(object({
+      network_virtual_hubs_routing_intent = optional(list(string), [])
+    }), {})
     network_public_ip_addresses = optional(object({
       network_public_ip_addresses    = optional(list(string), [])
       authorization_locks            = optional(list(string), [])
@@ -38,6 +41,7 @@ Paths use dot notation, for example `properties.autoscaleConfiguration`. Individ
 - `network_firewall_policies` - Slot for `modules/firewall_policy` (its `network_firewall_policies`, `authorization_locks`, `authorization_role_assignments`).
 - `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`.
 - `network_ip_groups` - Slot for `modules/ip_group` (its `network_ip_groups`, `authorization_locks`, `authorization_role_assignments`).
+- `network_virtual_hubs_routing_intent` - Slot for `modules/routing_intent`.
 - `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls (its `network_public_ip_addresses` and interface keys).
 DESCRIPTION
   nullable    = false
@@ -63,6 +67,9 @@ variable "resource_types" {
       authorization_locks            = optional(string)
       authorization_role_assignments = optional(string)
     }), {})
+    network_virtual_hubs_routing_intent = optional(object({
+      network_virtual_hubs_routing_intent = optional(string)
+    }), {})
     network_public_ip_addresses = optional(object({
       network_public_ip_addresses    = optional(string)
       authorization_locks            = optional(string)
@@ -81,6 +88,7 @@ Override the AzAPI `<provider>/<resource>@<api-version>` strings used by this mo
 - `network_firewall_policies` - Slot for `modules/firewall_policy`. Defaults live in the submodule.
 - `network_firewall_policies_rule_collection_groups` - Slot for `modules/rule_collection_group`. Defaults live in the submodule.
 - `network_ip_groups` - Slot for `modules/ip_group`. Defaults live in the submodule.
+- `network_virtual_hubs_routing_intent` - Slot for `modules/routing_intent`. Defaults live in the submodule.
 - `network_public_ip_addresses` - Slot for the `az-tf-mlz-public-ip` calls. Defaults live in that module.
 DESCRIPTION
   nullable    = false

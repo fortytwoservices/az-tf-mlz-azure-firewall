@@ -6,6 +6,10 @@ mock_provider "azapi" {
         properties = {
           ipAddress        = "203.0.113.10"
           ipConfigurations = [{ properties = { privateIPAddress = "10.0.0.4" } }]
+          hubIPAddresses = {
+            privateIPAddress = "10.100.0.132"
+            publicIPs        = { addresses = [{ address = "203.0.113.20" }], count = 1 }
+          }
         }
       }
     }
@@ -83,7 +87,7 @@ run "defaults" {
     error_message = "resource_id, name, private_ip_address and firewall_policy_resource_id should come from the firewall and its policy."
   }
   assert {
-    condition     = output.public_ip_address_ids == { ipconfig = module.public_ip["ipconfig"].resource_id } && output.public_ip_addresses == { ipconfig = "203.0.113.10" }
+    condition     = jsonencode(output.public_ip_address_ids) == jsonencode({ ipconfig = module.public_ip["ipconfig"].resource_id }) && jsonencode(output.public_ip_addresses) == jsonencode({ ipconfig = "203.0.113.10" }) && length(output.hub_public_ip_addresses) == 0
     error_message = "The public IP outputs should be keyed by IP configuration name."
   }
 }
@@ -231,9 +235,128 @@ run "forced_tunnelling_without_a_data_path_public_ip" {
     error_message = "The management configuration should keep its own public IP."
   }
   assert {
-    condition     = keys(module.public_ip) == ["management"] && keys(output.public_ip_address_ids) == ["management"] && keys(output.public_ip_addresses) == ["management"]
+    condition     = jsonencode([keys(module.public_ip), keys(output.public_ip_address_ids), keys(output.public_ip_addresses)]) == jsonencode([["management"], ["management"], ["management"]])
     error_message = "Only the management public IP should be created and output."
   }
+}
+
+run "virtual_hub_with_routing_intent" {
+  command = apply
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+      public_ip_count = 2
+      routing_intent  = {}
+    }
+  }
+
+  assert {
+    condition = jsonencode(azapi_resource.this.body.properties) == jsonencode({
+      autoscaleConfiguration = null
+      firewallPolicy         = { id = module.firewall_policy[0].resource_id }
+      hubIPAddresses         = { publicIPs = { count = 2 } }
+      sku                    = { name = "AZFW_Hub", tier = "Standard" }
+      virtualHub             = { id = var.virtual_hub.virtual_hub_id }
+    })
+    error_message = "A Virtual WAN hub firewall should get the hub, a count of Azure-managed public IPs and the policy, and no IP configurations."
+  }
+  assert {
+    condition     = azapi_resource.this.replace_triggers_external_values.subnet_id == lower(var.virtual_hub.virtual_hub_id) && azapi_resource.this.replace_triggers_external_values.management == false && azapi_resource.this.replace_triggers_refs == tolist(["properties.sku.name"])
+    error_message = "Moving to another hub, and switching between hub kinds (the SKU name), should replace the firewall."
+  }
+  assert {
+    condition     = length(module.public_ip) == 0 && length(module.routing_intent) == 1 && output.routing_intent_resource_id == module.routing_intent[0].resource_id
+    error_message = "No public IP resources and one routing intent should be created."
+  }
+  assert {
+    condition     = output.private_ip_address == "10.100.0.132" && jsonencode(output.hub_public_ip_addresses) == jsonencode(["203.0.113.20"]) && length(output.public_ip_address_ids) == 0 && length(output.public_ip_addresses) == 0
+    error_message = "The private and public IP addresses should come from the hub's IP addresses."
+  }
+}
+
+run "virtual_hub_with_internet_traffic_only" {
+  command = apply
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+      routing_intent = { private_traffic = false }
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.hubIPAddresses.publicIPs.count == 1 && length(module.routing_intent) == 1
+    error_message = "One public IP by default, and a routing intent for Internet traffic only."
+  }
+}
+
+run "virtual_hub_without_routing_intent" {
+  command = apply
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+    }
+  }
+
+  assert {
+    condition     = length(module.routing_intent) == 0 && output.routing_intent_resource_id == null
+    error_message = "No routing intent should be created when another state manages it."
+  }
+}
+
+run "both_hub_kinds" {
+  command = plan
+
+  variables {
+    virtual_hub = {
+      virtual_hub_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+    }
+  }
+
+  expect_failures = [var.virtual_hub]
+}
+
+run "no_hub_kind" {
+  command = plan
+
+  variables {
+    virtual_network = null
+  }
+
+  expect_failures = [var.virtual_hub]
+}
+
+run "routing_intent_without_policies" {
+  command = plan
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+      routing_intent = { internet_traffic = false, private_traffic = false }
+    }
+  }
+
+  expect_failures = [var.virtual_hub]
+}
+
+run "invalid_public_ip_count" {
+  command = plan
+
+  variables {
+    virtual_network = null
+    virtual_hub = {
+      virtual_hub_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualHubs/vhub-test"
+      public_ip_count = 0
+    }
+  }
+
+  expect_failures = [var.virtual_hub]
 }
 
 run "interfaces_and_overrides" {
