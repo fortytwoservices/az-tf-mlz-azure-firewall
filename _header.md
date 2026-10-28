@@ -11,8 +11,10 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   their own configurations. A management IP configuration in `AzureFirewallManagementSubnet` is required
   for Basic and for forced tunnelling. Public IP addresses are created through
   [`az-tf-mlz-public-ip`](https://github.com/fortytwoservices/az-tf-mlz-public-ip), or given by ID.
-  Zones are left to Azure unless set; changing them replaces the firewall. The private IP address, the
-  next hop for routes to the firewall, is an output.
+  Removing or renaming a created address takes one apply: the firewall moves to its new set of addresses
+  first, and the old address is deleted after (Azure deletes no address in use). Zones are left to Azure
+  unless set; changing them replaces the firewall and its created addresses, which then need new names.
+  The private IP address, the next hop for routes to the firewall, is an output.
 - **Policy rules only.** The firewall uses a policy the module creates with the firewall's tier
   (`firewall_policy`, `modules/firewall_policy`) or an existing one (`firewall_policy_id`). The classic
   rule collections on the firewall itself are not supported.
