@@ -7,7 +7,9 @@ redirect, explicit proxy and insights settings, and for Premium intrusion detect
 Rules are not in the policy: they are rule collection groups, `modules/rule_collection_group`, whose
 `lock_dependency` outputs the caller passes in this module's `lock_dependencies`, so that the policy's
 lock is removed around changes to them. A lock on a policy whose rules another Terraform state manages
-blocks that state from deleting them.
+blocks that state from deleting them. A `ReadOnly` lock also blocks changes to the policy itself, which do
+not remove it (removing it on every change would undo the lock): set `lock = null`, apply your change,
+then lock it again.
 
 Every setting is sent, empty when unset, so that removing one reaches Azure. Lock and role assignments come
 from [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces).

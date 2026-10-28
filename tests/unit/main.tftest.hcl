@@ -217,6 +217,33 @@ run "existing_policy_with_rules_and_ip_groups" {
   }
 }
 
+run "forced_tunnelling_without_a_data_path_public_ip" {
+  command = apply
+
+  variables {
+    virtual_network = {
+      subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+      management = {
+        subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
+        public_ip = { name = "pip-afw-test-mgmt" }
+      }
+    }
+  }
+
+  assert {
+    condition     = azapi_resource.this.body.properties.ipConfigurations[0].properties.subnet.id == var.virtual_network.subnet_id && azapi_resource.this.body.properties.ipConfigurations[0].properties.publicIPAddress == null && length(azapi_resource.this.body.properties.ipConfigurations) == 1
+    error_message = "The subnet configuration should hold the subnet without a public IP."
+  }
+  assert {
+    condition     = azapi_resource.this.body.properties.managementIpConfiguration.properties.publicIPAddress.id == module.public_ip["management"].resource_id
+    error_message = "The management configuration should keep its own public IP."
+  }
+  assert {
+    condition     = keys(module.public_ip) == ["management"] && keys(output.public_ip_address_ids) == ["management"] && keys(output.public_ip_addresses) == ["management"]
+    error_message = "Only the management public IP should be created and output."
+  }
+}
+
 run "interfaces_and_overrides" {
   command = apply
 
