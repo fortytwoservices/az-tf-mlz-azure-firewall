@@ -151,6 +151,10 @@ run "basic_with_management_and_more_public_ips" {
     error_message = "Only the public IPs with a name should be created."
   }
   assert {
+    condition     = jsonencode(terraform_data.public_ip_destroy_order.input) == jsonencode({ for name, public_ip in module.public_ip : name => public_ip.resource_id })
+    error_message = "The destroy-order resource should depend on every created public IP, so that they inherit its create_before_destroy."
+  }
+  assert {
     condition     = output.public_ip_address_ids.ipconfig == var.virtual_network.public_ip_resource_id && length(output.public_ip_address_ids) == 4 && !contains(keys(output.public_ip_addresses), "ipconfig")
     error_message = "public_ip_address_ids should hold every public IP, and public_ip_addresses only the created ones."
   }

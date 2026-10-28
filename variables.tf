@@ -345,7 +345,7 @@ variable "sku_tier" {
 variable "zones" {
   type        = list(string)
   default     = null
-  description = "(Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `[\"1\", \"2\", \"3\"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall."
+  description = "(Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `[\"1\", \"2\", \"3\"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall and the public IP addresses it creates, which then need new names: a removed or replaced address is deleted only after the firewall has moved to its new set."
 
   validation {
     condition     = var.zones == null ? true : length(var.zones) > 0 && alltrue([for zone in var.zones : contains(["1", "2", "3"], zone)])

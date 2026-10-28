@@ -13,8 +13,10 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   their own configurations. A management IP configuration in `AzureFirewallManagementSubnet` is required
   for Basic and for forced tunnelling. Public IP addresses are created through
   [`az-tf-mlz-public-ip`](https://github.com/fortytwoservices/az-tf-mlz-public-ip), or given by ID.
-  Zones are left to Azure unless set; changing them replaces the firewall. The private IP address, the
-  next hop for routes to the firewall, is an output.
+  Removing or renaming a created address takes one apply: the firewall moves to its new set of addresses
+  first, and the old address is deleted after (Azure deletes no address in use). Zones are left to Azure
+  unless set; changing them replaces the firewall and its created addresses, which then need new names.
+  The private IP address, the next hop for routes to the firewall, is an output.
 - **Policy rules only.** The firewall uses a policy the module creates with the firewall's tier
   (`firewall_policy`, `modules/firewall_policy`) or an existing one (`firewall_policy_id`). The classic
   rule collections on the firewall itself are not supported.
@@ -77,6 +79,7 @@ The following requirements are needed by this module:
 The following resources are used by this module:
 
 - [azapi_resource.this](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
+- [terraform_data.public_ip_destroy_order](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) (resource)
 
 <!-- markdownlint-disable MD013 -->
 ## Required Inputs
@@ -626,7 +629,7 @@ Default: `null`
 
 ### <a name="input_zones"></a> [zones](#input\_zones)
 
-Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall.
+Description: (Optional) Availability zones of the firewall and of the public IP addresses the module creates, for example `["1", "2", "3"]`. Null leaves them out, which Microsoft advises for new firewalls: Azure spreads them across zones itself where the region supports it (Azure Firewall FAQ), and the public IP addresses are zone-redundant where the region has zones. Changing them replaces the firewall and the public IP addresses it creates, which then need new names: a removed or replaced address is deleted only after the firewall has moved to its new set.
 
 Type: `list(string)`
 

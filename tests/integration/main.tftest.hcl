@@ -3,7 +3,8 @@
 # Proves what mocks cannot: the default API versions and bodies are accepted for a Basic firewall with a
 # management IP configuration, a created Basic policy, IP groups and rules; rules change, and a rule
 # collection group and an IP group it used are deleted, under the policy's lock; a further public IP is
-# added to the locked firewall; the policy and an IP group in use are renamed (created before destroyed).
+# added to the locked firewall; the policy and an IP group in use are renamed (created before destroyed);
+# a created public IP in use is renamed, then removed, each in one apply (the firewall moves first).
 
 run "setup" {
   module {
@@ -276,5 +277,131 @@ run "rename_the_policy_and_an_ip_group_in_use" {
   assert {
     condition     = endswith(output.firewall_policy_resource_id, "-renamed") && endswith(output.ip_group_resource_ids.spokes, "-renamed") && output.private_ip_address == run.create.private_ip_address
     error_message = "The firewall should use the renamed policy, and the rules the renamed IP group."
+  }
+}
+
+run "rename_a_public_ip_in_use" {
+  # Azure deletes no public IP address a firewall uses: the renamed address is created, the firewall moves
+  # its configuration to it, and the old address goes last, in one apply.
+  variables {
+    name      = "afw-mlz-it-${run.setup.suffix}"
+    parent_id = run.setup.resource_group_id
+    location  = run.setup.location
+    sku_tier  = "Basic"
+    virtual_network = {
+      subnet_id = run.setup.firewall_subnet_id
+      public_ip = { name = "pip-mlz-it-${run.setup.suffix}" }
+      additional_public_ips = {
+        egress-2 = { name = "pip-mlz-it-${run.setup.suffix}-2b" }
+      }
+      management = {
+        subnet_id = run.setup.management_subnet_id
+        public_ip = { name = "pip-mlz-it-${run.setup.suffix}-mgmt" }
+      }
+    }
+    firewall_policy = {
+      name = "afwp-mlz-it-${run.setup.suffix}-renamed"
+      lock = { kind = "CanNotDelete" }
+    }
+    ip_groups = {
+      spokes = { name = "ipg-mlz-it-${run.setup.suffix}-spokes-renamed", ip_addresses = ["10.1.0.0/16", "10.2.0.0/16"] }
+    }
+    rule_collection_groups = {
+      platform = {
+        priority = 200
+        network_rule_collections = {
+          dns = {
+            priority = 300
+            action   = "Allow"
+            rules = {
+              spokes = { description = "DNS from the spokes", protocols = ["UDP", "TCP"], source_ip_groups = ["spokes"], destination_addresses = ["168.63.129.16"], destination_ports = ["53"] }
+            }
+          }
+        }
+        application_rule_collections = {
+          updates = {
+            priority = 400
+            action   = "Allow"
+            rules = {
+              windows-update = { source_ip_groups = ["spokes"], protocols = [{ type = "Https", port = 443 }], destination_fqdn_tags = ["WindowsUpdate"] }
+            }
+          }
+        }
+      }
+    }
+    lock = { kind = "CanNotDelete" }
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
+    }
+  }
+
+  assert {
+    condition     = endswith(output.public_ip_address_ids["egress-2"], "-2b") && length(output.public_ip_address_ids) == 3 && output.private_ip_address == run.create.private_ip_address
+    error_message = "The firewall should use the renamed address in the same IP configuration."
+  }
+}
+
+run "remove_a_public_ip_in_use" {
+  # The firewall drops the IP configuration first; the address is deleted after, in one apply.
+  variables {
+    name      = "afw-mlz-it-${run.setup.suffix}"
+    parent_id = run.setup.resource_group_id
+    location  = run.setup.location
+    sku_tier  = "Basic"
+    virtual_network = {
+      subnet_id = run.setup.firewall_subnet_id
+      public_ip = { name = "pip-mlz-it-${run.setup.suffix}" }
+      management = {
+        subnet_id = run.setup.management_subnet_id
+        public_ip = { name = "pip-mlz-it-${run.setup.suffix}-mgmt" }
+      }
+    }
+    firewall_policy = {
+      name = "afwp-mlz-it-${run.setup.suffix}-renamed"
+      lock = { kind = "CanNotDelete" }
+    }
+    ip_groups = {
+      spokes = { name = "ipg-mlz-it-${run.setup.suffix}-spokes-renamed", ip_addresses = ["10.1.0.0/16", "10.2.0.0/16"] }
+    }
+    rule_collection_groups = {
+      platform = {
+        priority = 200
+        network_rule_collections = {
+          dns = {
+            priority = 300
+            action   = "Allow"
+            rules = {
+              spokes = { description = "DNS from the spokes", protocols = ["UDP", "TCP"], source_ip_groups = ["spokes"], destination_addresses = ["168.63.129.16"], destination_ports = ["53"] }
+            }
+          }
+        }
+        application_rule_collections = {
+          updates = {
+            priority = 400
+            action   = "Allow"
+            rules = {
+              windows-update = { source_ip_groups = ["spokes"], protocols = [{ type = "Https", port = 443 }], destination_fqdn_tags = ["WindowsUpdate"] }
+            }
+          }
+        }
+      }
+    }
+    lock = { kind = "CanNotDelete" }
+    diagnostic_settings = {
+      workspace = {
+        workspace_resource_id = run.setup.workspace_id
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
+    }
+  }
+
+  assert {
+    condition     = !contains(keys(output.public_ip_address_ids), "egress-2") && length(output.public_ip_address_ids) == 2 && output.private_ip_address == run.create.private_ip_address
+    error_message = "The firewall should keep its first and management public IPs only."
   }
 }
