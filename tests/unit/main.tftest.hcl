@@ -382,8 +382,10 @@ run "more_than_80_hub_public_ips" {
 }
 
 run "basic_in_virtual_hub" {
-  command = plan
+  command = apply
 
+  # Azure creates a Basic firewall in a virtual hub (sandbox, 2026-10-29); it needs no management IP
+  # configuration there.
   variables {
     sku_tier        = "Basic"
     virtual_network = null
@@ -392,7 +394,10 @@ run "basic_in_virtual_hub" {
     }
   }
 
-  expect_failures = [var.virtual_hub]
+  assert {
+    condition     = jsonencode(azapi_resource.this.body.properties.sku) == jsonencode({ name = "AZFW_Hub", tier = "Basic" }) && azapi_resource.this.replace_triggers_external_values.basic == true
+    error_message = "A Basic firewall should be accepted in a virtual hub, with the Basic replacement trigger."
+  }
 }
 
 run "interfaces_and_overrides" {

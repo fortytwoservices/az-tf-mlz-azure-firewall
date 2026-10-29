@@ -29,7 +29,7 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   policy, as in Azure Verified Modules, through
   [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces). The policy's lock
   also covers its rule collection groups, which pass their `lock_dependency` to it.
-- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub): Azure assigns its public
+- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub), Basic, Standard or Premium: Azure assigns its public
   IP addresses (`public_ip_count`), and `modules/routing_intent` sends the hub's Internet and/or private
   traffic through it. The hub belongs to the caller; moving the firewall to another hub replaces it.
 
@@ -569,7 +569,7 @@ Description: (Optional) The firewall in a Virtual WAN hub (`AZFW_Hub`, a secured
 - `public_ip_count` - (Optional) How many public IP addresses Azure assigns to the firewall, 1 to 80 (Microsoft Learn: more can block updates to the firewall and its policy). Defaults to `1`.
 - `routing_intent` - (Optional) The hub's routing intent, through `modules/routing_intent`, with this firewall as the next hop: `internet_traffic` (policy `InternetTraffic`) and `private_traffic` (policy `PrivateTrafficPolicy`), both `true` by default, and `name` (defaults to `RoutingIntent`). It is replaced together with the firewall. A hub has one routing intent; leave this null when another state manages it.
 
-A firewall in a Virtual WAN hub is Standard or Premium (Microsoft Learn, "Secure your virtual hub using Azure PowerShell").
+A firewall in a Virtual WAN hub can be Basic, Standard or Premium (a Basic hub firewall was created in the sandbox on 2026-10-29; Learn's PowerShell tutorial names only Standard and Premium).
 
 Type:
 

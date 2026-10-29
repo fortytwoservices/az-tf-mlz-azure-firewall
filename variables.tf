@@ -124,7 +124,7 @@ variable "virtual_hub" {
 - `public_ip_count` - (Optional) How many public IP addresses Azure assigns to the firewall, 1 to 80 (Microsoft Learn: more can block updates to the firewall and its policy). Defaults to `1`.
 - `routing_intent` - (Optional) The hub's routing intent, through `modules/routing_intent`, with this firewall as the next hop: `internet_traffic` (policy `InternetTraffic`) and `private_traffic` (policy `PrivateTrafficPolicy`), both `true` by default, and `name` (defaults to `RoutingIntent`). It is replaced together with the firewall. A hub has one routing intent; leave this null when another state manages it.
 
-A firewall in a Virtual WAN hub is Standard or Premium (Microsoft Learn, "Secure your virtual hub using Azure PowerShell").
+A firewall in a Virtual WAN hub can be Basic, Standard or Premium (a Basic hub firewall was created in the sandbox on 2026-10-29; Learn's PowerShell tutorial names only Standard and Premium).
 DESCRIPTION
 
   validation {
@@ -134,10 +134,6 @@ DESCRIPTION
   validation {
     condition     = var.virtual_hub == null ? true : can(provider::azapi::parse_resource_id("Microsoft.Network/virtualHubs", var.virtual_hub.virtual_hub_id)) && var.virtual_hub.public_ip_count >= 1 && var.virtual_hub.public_ip_count <= 80 && floor(var.virtual_hub.public_ip_count) == var.virtual_hub.public_ip_count
     error_message = "`virtual_hub.virtual_hub_id` must be a virtual hub resource ID, and `public_ip_count` a whole number from 1 to 80."
-  }
-  validation {
-    condition     = var.virtual_hub == null || var.sku_tier != "Basic"
-    error_message = "A firewall in a Virtual WAN hub is Standard or Premium, not Basic."
   }
   validation {
     condition     = var.virtual_hub == null ? true : var.virtual_hub.routing_intent == null ? true : var.virtual_hub.routing_intent.internet_traffic || var.virtual_hub.routing_intent.private_traffic
