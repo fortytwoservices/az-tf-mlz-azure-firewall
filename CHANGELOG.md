@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/compare/v0.1.2...v0.1.3) (2026-10-29)
+
+
+### Bug Fixes
+
+* Basic firewall in a Virtual WAN hub; replace the routing intent with a renamed firewall ([#8](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/issues/8)) ([5baa231](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/commit/5baa2316b22cb74d043d905a006905be41cf200e))
+
 ## [0.1.2](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/compare/v0.1.1...v0.1.2) (2026-10-28)
 
 
