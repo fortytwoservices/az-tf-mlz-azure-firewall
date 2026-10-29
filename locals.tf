@@ -47,4 +47,12 @@ locals {
     subnet_id  = var.virtual_network != null ? lower(var.virtual_network.subnet_id) : var.virtual_hub == null ? null : lower(var.virtual_hub.virtual_hub_id)
     zones      = local.zones
   }
+  # The routing intent's: the firewall's, plus what replaces the firewall through azapi itself (its name
+  # and location), which the firewall's own triggers need not list. Without them, a renamed firewall is
+  # deleted while the routing intent, updated only after the new one exists, still names it as next hop.
+  # Kept out of the firewall's triggers: a new key there would replace every deployed firewall.
+  routing_intent_replace_triggers = merge(local.firewall_replace_triggers, {
+    firewall_name = var.name
+    location      = var.location
+  })
 }

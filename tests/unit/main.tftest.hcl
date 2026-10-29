@@ -271,8 +271,8 @@ run "virtual_hub_with_routing_intent" {
     error_message = "Moving to another hub, and switching between hub kinds (the SKU name), should replace the firewall."
   }
   assert {
-    condition     = jsonencode(azapi_resource.this.replace_triggers_external_values) == jsonencode(local.firewall_replace_triggers)
-    error_message = "The firewall's replacement triggers should be the local the routing intent also receives."
+    condition     = jsonencode(azapi_resource.this.replace_triggers_external_values) == jsonencode(local.firewall_replace_triggers) && jsonencode(local.routing_intent_replace_triggers) == jsonencode(merge(local.firewall_replace_triggers, { firewall_name = var.name, location = var.location }))
+    error_message = "The routing intent's replacement triggers should be the firewall's plus its name and location, so a renamed firewall replaces it too."
   }
   assert {
     condition     = length(module.public_ip) == 0 && length(module.routing_intent) == 1 && output.routing_intent_resource_id == module.routing_intent[0].resource_id
