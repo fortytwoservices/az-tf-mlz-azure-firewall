@@ -1,8 +1,8 @@
 # Real Azure, no mocks: ARM_SUBSCRIPTION_ID=<test subscription> scripts/integration.sh .
-# A Standard firewall in a Virtual WAN hub, billed by the hour with the hub while they exist: the run
-# destroys them at the end. Proves what mocks cannot: the default API versions take a hub firewall
-# (AZFW_Hub) with Azure-managed public IPs and the hub's routing intent; the public IP count and the
-# routing policies change in place.
+# A Basic firewall in a Virtual WAN hub, the cheapest tier, billed by the hour with the hub while they
+# exist: the run destroys them at the end. Proves what mocks cannot: the default API versions take a Basic
+# hub firewall (AZFW_Hub) and policy with Azure-managed public IPs and the hub's routing intent; the public
+# IP count and the routing policies change in place. `examples/virtual_hub` covers a Standard one.
 
 run "setup" {
   module {
@@ -15,6 +15,7 @@ run "create_in_virtual_hub" {
     name            = "afw-mlz-it-${run.setup.suffix}"
     parent_id       = run.setup.resource_group_id
     location        = run.setup.location
+    sku_tier        = "Basic"
     virtual_network = null
     virtual_hub = {
       virtual_hub_id = run.setup.virtual_hub_id
@@ -52,6 +53,7 @@ run "more_public_ips_and_internet_traffic_only" {
     name            = "afw-mlz-it-${run.setup.suffix}"
     parent_id       = run.setup.resource_group_id
     location        = run.setup.location
+    sku_tier        = "Basic"
     virtual_network = null
     virtual_hub = {
       virtual_hub_id  = run.setup.virtual_hub_id

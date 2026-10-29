@@ -27,7 +27,7 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   policy, as in Azure Verified Modules, through
   [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces). The policy's lock
   also covers its rule collection groups, which pass their `lock_dependency` to it.
-- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub): Azure assigns its public
+- **Or a firewall in a Virtual WAN hub** (`virtual_hub`, `AZFW_Hub`, a secured hub), Basic, Standard or Premium: Azure assigns its public
   IP addresses (`public_ip_count`), and `modules/routing_intent` sends the hub's Internet and/or private
   traffic through it. The hub belongs to the caller; moving the firewall to another hub replaces it.
 
