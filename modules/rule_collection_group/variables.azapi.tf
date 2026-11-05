@@ -28,15 +28,15 @@ DESCRIPTION
 
 variable "retry" {
   type = object({
-    error_message_regex  = optional(list(string), ["AnotherOperationInProgress"])
+    error_message_regex  = optional(list(string), ["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"])
     interval_seconds     = optional(number, 30)
     max_interval_seconds = optional(number, 300)
   })
   default     = {}
   description = <<DESCRIPTION
-Retry configuration applied to the `azapi` resource. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the policy runs; any field can be overridden.
+Retry configuration applied to the `azapi` resource. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the policy runs, and a rule collection group write refused while the policy is still `Updating` from the previous one (minutes after it finishes); any field can be overridden.
 
-- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress"]`.
+- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"]`.
 - `interval_seconds`     - (Optional) Initial interval between retries in seconds. Defaults to `30`.
 - `max_interval_seconds` - (Optional) Maximum interval between retries in seconds. Defaults to `300`.
 

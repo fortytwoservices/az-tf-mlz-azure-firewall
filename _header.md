@@ -20,7 +20,8 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   rule collections on the firewall itself are not supported.
 - **Rules are maps keyed by name** (groups, collections, rules), so adding one never shifts the others.
   Keys of `ip_groups` work wherever an IP group ID is taken. Rule collection groups are written one at a
-  time per policy, before the firewall, and the default `retry` covers `AnotherOperationInProgress`.
+  time per policy, before the firewall, and the default `retry` covers `AnotherOperationInProgress` and the
+  policy still `Updating` from the previous write.
 - **Removing a setting reaches Azure.** Every policy setting and rule field is sent, empty when unset,
   because azapi compares only the keys in the body.
 - Lock, role assignments and diagnostic settings on the firewall, and lock and role assignments on the

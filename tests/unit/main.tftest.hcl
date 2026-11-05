@@ -71,8 +71,8 @@ run "defaults" {
     error_message = "Zones, the management NIC, the virtual network, crossing the Basic tier and the SKU name should replace the firewall."
   }
   assert {
-    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
-    error_message = "The default retry should cover AnotherOperationInProgress, with no timeouts or tags."
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"]) && azapi_resource.this.timeouts == null && length(coalesce(azapi_resource.this.tags, {})) == 0
+    error_message = "The default retry should cover AnotherOperationInProgress and the policy still Updating, with no timeouts or tags."
   }
   assert {
     condition     = keys(module.public_ip) == ["ipconfig"] && length(module.firewall_policy) == 1 && length(module.rule_collection_group) + length(module.ip_group) == 0

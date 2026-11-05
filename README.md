@@ -22,7 +22,8 @@ called on its own, so a separate rules state can manage `modules/rule_collection
   rule collections on the firewall itself are not supported.
 - **Rules are maps keyed by name** (groups, collections, rules), so adding one never shifts the others.
   Keys of `ip_groups` work wherever an IP group ID is taken. Rule collection groups are written one at a
-  time per policy, before the firewall, and the default `retry` covers `AnotherOperationInProgress`.
+  time per policy, before the firewall, and the default `retry` covers `AnotherOperationInProgress` and the
+  policy still `Updating` from the previous write.
 - **Removing a setting reaches Azure.** Every policy setting and rule field is sent, empty when unset,
   because azapi compares only the keys in the body.
 - Lock, role assignments and diagnostic settings on the firewall, and lock and role assignments on the
@@ -410,9 +411,9 @@ Default: `{}`
 
 ### <a name="input_retry"></a> [retry](#input\_retry)
 
-Description: Retry configuration applied to every `azapi` resource managed by the module and its submodules. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the firewall or policy runs; any field can be overridden.
+Description: Retry configuration applied to every `azapi` resource managed by the module and its submodules. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the firewall or policy runs, and a rule collection group write refused while the policy is still `Updating` from the previous one (minutes after it finishes); any field can be overridden.
 
-- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress"]`.
+- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"]`.
 - `interval_seconds`     - (Optional) Initial interval between retries in seconds. Defaults to `30`.
 - `max_interval_seconds` - (Optional) Maximum interval between retries in seconds. Defaults to `300`.
 
@@ -422,7 +423,7 @@ Type:
 
 ```hcl
 object({
-    error_message_regex  = optional(list(string), ["AnotherOperationInProgress"])
+    error_message_regex  = optional(list(string), ["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"])
     interval_seconds     = optional(number, 30)
     max_interval_seconds = optional(number, 300)
   })
