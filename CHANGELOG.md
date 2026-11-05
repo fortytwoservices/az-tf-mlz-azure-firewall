@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/compare/v0.1.3...v0.1.4) (2026-11-05)
+
+
+### Bug Fixes
+
+* retry a rule collection group write while the policy is still Updating ([#10](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/issues/10)) ([220e345](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/commit/220e3458efcb232dbac1e30c607dd4511396469b))
+
 ## [0.1.3](https://github.com/fortytwoservices/az-tf-mlz-azure-firewall/compare/v0.1.2...v0.1.3) (2026-10-29)
 
 
