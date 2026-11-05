@@ -70,7 +70,10 @@ resource "azapi_resource" "this" {
     }
   }
   ignore_body_changes = length(var.ignore_body_changes.network_firewall_policies_rule_collection_groups) > 0 ? var.ignore_body_changes.network_firewall_policies_rule_collection_groups : null
-  # Azure refuses parallel writes of rule collection groups to one policy (AnotherOperationInProgress).
+  # Azure refuses parallel writes of rule collection groups to one policy (AnotherOperationInProgress). The
+  # lock serialises them, but the policy stays Updating for minutes after each write and refuses the next
+  # meanwhile (FirewallPolicyRuleCollectionGroupDeleteNotAllowed, MLZ canary teardown 2026-11-05), which
+  # the default retry covers.
   locks                  = [var.parent_id]
   response_export_values = []
   retry                  = var.retry

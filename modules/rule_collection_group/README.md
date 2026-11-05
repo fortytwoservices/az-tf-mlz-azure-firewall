@@ -10,7 +10,9 @@ separate rules state can call this submodule on its own with the policy ID, so a
 the firewall.
 
 Writes are serialised on the policy (`locks`), because Azure refuses parallel writes of rule collection
-groups to one policy (`AnotherOperationInProgress`), which the default `retry` also covers. IP groups are
+groups to one policy (`AnotherOperationInProgress`). The policy also stays `Updating` for minutes after a
+write and refuses the next one meanwhile (`FirewallPolicyRuleCollectionGroupUpdateNotAllowed`,
+`FirewallPolicyRuleCollectionGroupDeleteNotAllowed`); the default `retry` covers both. IP groups are
 referenced by resource ID.
 
 <!-- markdownlint-disable MD033 -->
@@ -208,9 +210,9 @@ Default: `{}`
 
 ### <a name="input_retry"></a> [retry](#input\_retry)
 
-Description: Retry configuration applied to the `azapi` resource. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the policy runs; any field can be overridden.
+Description: Retry configuration applied to the `azapi` resource. Defaults retry `AnotherOperationInProgress`, which Azure returns while another write to the policy runs, and a rule collection group write refused while the policy is still `Updating` from the previous one (minutes after it finishes); any field can be overridden.
 
-- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress"]`.
+- `error_message_regex`  - (Optional) A list of regex patterns matching error messages that trigger a retry. Defaults to `["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"]`.
 - `interval_seconds`     - (Optional) Initial interval between retries in seconds. Defaults to `30`.
 - `max_interval_seconds` - (Optional) Maximum interval between retries in seconds. Defaults to `300`.
 
@@ -220,7 +222,7 @@ Type:
 
 ```hcl
 object({
-    error_message_regex  = optional(list(string), ["AnotherOperationInProgress"])
+    error_message_regex  = optional(list(string), ["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"])
     interval_seconds     = optional(number, 30)
     max_interval_seconds = optional(number, 300)
   })

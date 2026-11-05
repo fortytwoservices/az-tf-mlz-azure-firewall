@@ -28,8 +28,18 @@ run "empty_group" {
     error_message = "Writes should be serialised on the policy."
   }
   assert {
-    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.retry.interval_seconds == 30 && azapi_resource.this.retry.max_interval_seconds == 300
-    error_message = "The default retry should cover AnotherOperationInProgress."
+    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress", "Parent Firewall Policy .+ is in Updating state"]) && azapi_resource.this.retry.interval_seconds == 30 && azapi_resource.this.retry.max_interval_seconds == 300
+    error_message = "The default retry should cover AnotherOperationInProgress and the policy still Updating."
+  }
+  # Azure's words for a write refused while the policy is Updating: the delete from the MLZ canary teardown
+  # (2026-11-05), the update from hashicorp/terraform-provider-azurerm#15440. Terraform's regex() and
+  # azapi's retry both use Go's RE2.
+  assert {
+    condition = alltrue([for message in [
+      "Rule Collection Group lz-07 can not be deleted because Parent Firewall Policy afwp-mlz-hub-nwe is in Updating state from previous operation ID : bb5c0a54-a616-40c6-9a58-0150329183cf.",
+      "Rule Collection Group networkRuleCollectionGroup can not be updated because Parent Firewall Policy fwpol is in Updating state from previous operation ID : ab231b47-5c71-43f4-b09b-2b365d7b4165.",
+    ] : anytrue([for pattern in azapi_resource.this.retry.error_message_regex : can(regex(pattern, message))])])
+    error_message = "The default retry should match Azure's refusals while the policy is Updating."
   }
   assert {
     condition     = output.resource_id == azapi_resource.this.id && output.name == var.name && length(output.lock_dependency) == 64

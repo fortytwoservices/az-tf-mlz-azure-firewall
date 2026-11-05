@@ -8,5 +8,7 @@ separate rules state can call this submodule on its own with the policy ID, so a
 the firewall.
 
 Writes are serialised on the policy (`locks`), because Azure refuses parallel writes of rule collection
-groups to one policy (`AnotherOperationInProgress`), which the default `retry` also covers. IP groups are
+groups to one policy (`AnotherOperationInProgress`). The policy also stays `Updating` for minutes after a
+write and refuses the next one meanwhile (`FirewallPolicyRuleCollectionGroupUpdateNotAllowed`,
+`FirewallPolicyRuleCollectionGroupDeleteNotAllowed`); the default `retry` covers both. IP groups are
 referenced by resource ID.
